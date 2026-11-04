@@ -29,6 +29,14 @@ The tests also run with the standard library when pytest is unavailable:
 python -m unittest discover -s backend/tests -v
 ```
 
+For a concise offline demonstration of generation, validation, simulated review, execution, and clustering:
+
+```powershell
+python -m scripts.demo_quality
+```
+
+The script prints actual result JSON. Its in-memory approval is a labeled demo simulation; Member 1 must wire persisted human approval for the product flow.
+
 Set `MOCK_VERSION` to `1.3.0-b`, `1.3.0-c`, or `1.4.0` and restart the server to change implementation. This environment variable is a development-only selector, not a request header or browser parameter. Member 1 must agree to this selection mechanism before relying on it in UI flows. The fixed API route is `POST http://127.0.0.1:9000/v1/pay/calculate` with `start_time`, `end_time`, `overnight`, and `meal_break_minutes`. Successful JSON contains `paid_minutes` and `overtime_minutes`; invalid inputs return HTTP 422. Successful responses include `X-Mock-Version`.
 
 Example:
