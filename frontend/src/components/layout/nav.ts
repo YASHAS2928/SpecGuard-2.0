@@ -15,8 +15,6 @@ export interface NavItem {
   label: string
   icon: LucideIcon
   group: string
-  /** Name of the batch that delivers the screen, when it is not built yet. */
-  soon?: string
 }
 
 export const NAV_ITEMS: NavItem[] = [

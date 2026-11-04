@@ -128,7 +128,7 @@ beforeEach(() => {
   vi.mocked(reviewSpecTests).mockResolvedValue({ decision: 'APPROVE', reviewed: [], refused: [] })
 })
 
-describe('Batch 2 test review UI', () => {
+describe('Test review UI', () => {
   it('shows coverage counts and lets a cell filter by rule and technique', async () => {
     const user = userEvent.setup()
     const onPick = vi.fn()

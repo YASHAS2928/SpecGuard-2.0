@@ -239,7 +239,16 @@ function ImpactBoard({ specId }: { specId: string }) {
         )}
       </Panel>
 
-      {error && <ErrorState error={error} />}
+      {error?.status === 409 && error.code === 'CONFLICT' ? (
+        <Notice tone="warn" title="This specification pair has already been analysed">
+          <Link to="/requirements" className="text-accent underline">
+            Create a new requirement version
+          </Link>{' '}
+          to run a fresh impact analysis. The current report remains available below when one is already loaded.
+        </Notice>
+      ) : (
+        error && <ErrorState error={error} />
+      )}
       {report && <ImpactWarnings warnings={report.warnings} />}
       {report && <ImpactSummary report={report} />}
 

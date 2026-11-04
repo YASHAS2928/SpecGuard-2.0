@@ -10,6 +10,7 @@ import { listSpecTests } from '../../api/tests'
 import { useSession } from '../../app/session'
 import { useWorkspace } from '../../app/workspace'
 import { SegmentedBar } from '../../components/domain/Charts'
+import { canEditSpec } from '../../components/domain/SpecParts'
 import {
   Button,
   Dialog,
@@ -81,6 +82,7 @@ function RunBoard({ specId }: { specId: string }) {
   const defects = useLoad(() => listDefects({ spec_id: specId }), `defects:${specId}`)
   const history = useLoad(() => loadRunHistory(10, specId), `history:${specId}`)
   const owner = useSyncWorkspace(specId, spec.data?.version)
+  const canRun = canEditSpec(actor.actor_role)
 
   const [pickedId, setPickedId] = useState<string | null>(null)
   const [fresh, setFresh] = useState<RunRecord | null>(null)
@@ -150,7 +152,7 @@ function RunBoard({ specId }: { specId: string }) {
         <StatusPill value={spec.data.status} />
         <div className="ml-auto flex items-center gap-3">
           <span className="text-sm text-fg-2">{approved.length} approved test(s)</span>
-          <Button variant="primary" disabled={approved.length === 0} onClick={() => setConfirm(true)}>
+          <Button variant="primary" disabled={!canRun || approved.length === 0} onClick={() => setConfirm(true)}>
             <Play size={14} aria-hidden="true" />
             Run approved tests
           </Button>
@@ -245,7 +247,7 @@ function RunBoard({ specId }: { specId: string }) {
           )}
         </div>
 
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           <MockControl onChanged={setMockVersion} />
           {defects.loading && !defects.data && <Skeleton className="h-32 w-full" />}
           {defects.error && <ErrorState error={defects.error} onRetry={defects.reload} compact />}

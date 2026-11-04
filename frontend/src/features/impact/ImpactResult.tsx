@@ -40,7 +40,7 @@ export function RuleChanges({ report }: { report: ImpactReport }) {
     return <p className="px-3 py-6 text-center text-sm text-fg-3">No rule changed between these specifications.</p>
   }
   return (
-    <div className="overflow-x-auto">
+    <div className="min-w-0 max-w-full overflow-x-auto">
       <table className="w-full min-w-[32rem] text-sm">
         <thead className="border-b border-line text-left text-[10px] uppercase tracking-wider text-fg-3">
           <tr>
@@ -94,7 +94,7 @@ export function ImpactTests({
       {shown.length === 0 ? (
         <p className="px-3 py-6 text-center text-sm text-fg-3">No tests in this group.</p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="min-w-0 max-w-full overflow-x-auto">
           <table className="w-full min-w-[40rem] text-sm">
             <thead className="border-b border-line text-left text-[10px] uppercase tracking-wider text-fg-3">
               <tr>

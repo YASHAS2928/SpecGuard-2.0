@@ -1,7 +1,7 @@
 import { ShieldCheck } from 'lucide-react'
 import type { RunResult } from '../../api/runs'
 import type { TestRecord } from '../../api/tests'
-import { Pill, StatusPill } from '../../components/ui'
+import { Pill, ProvenanceBadge, StatusPill } from '../../components/ui'
 import { expectedText } from '../../lib/tests'
 import { observedText } from '../../lib/runs'
 
@@ -15,7 +15,7 @@ export function RunTable({
   onOpen: (id: string) => void
 }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="min-w-0 max-w-full overflow-x-auto">
       <table className="w-full min-w-[46rem] text-sm">
         <thead className="border-b border-line text-left text-[10px] uppercase tracking-wider text-fg-3">
           <tr>
@@ -44,7 +44,12 @@ export function RunTable({
                   >
                     {result.tc_code}
                   </button>
-                  {test && <span className="ml-2"><Pill>{test.technique}</Pill></span>}
+                  {test && (
+                    <span className="ml-2 inline-flex items-center gap-1">
+                      <Pill>{test.technique}</Pill>
+                      {test.origin === 'AI' && <ProvenanceBadge source="ai" />}
+                    </span>
+                  )}
                 </td>
                 <td className="px-3 py-2"><StatusPill value={result.status} /></td>
                 <td className="px-3 py-2">
