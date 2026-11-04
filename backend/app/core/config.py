@@ -12,6 +12,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -32,6 +33,7 @@ LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
 SQLITE_FILE_PREFIX: str = "sqlite:///"
 SQLITE_IN_MEMORY_URLS: frozenset[str] = frozenset({"sqlite://", "sqlite:///:memory:"})
+LOOPBACK_HOSTS: frozenset[str] = frozenset({"127.0.0.1", "localhost", "::1"})
 
 class Settings(BaseSettings):
     """Typed application settings loaded from the environment."""
@@ -63,7 +65,7 @@ class Settings(BaseSettings):
     ai_max_retries: int = Field(default=1, ge=0, le=3)
 
     mock_api_base_url: str = "http://localhost:9000"
-    cors_origins: str = "http://localhost:5173"
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     log_level: LogLevel = "INFO"
 
     @field_validator(
@@ -114,9 +116,27 @@ class Settings(BaseSettings):
     @field_validator("ollama_base_url")
     @classmethod
     def _validate_ollama_url(cls, value: str) -> str:
+        """Ollama is a local service: only loopback hosts, so prompts never leave the machine."""
         value = value.strip().rstrip("/")
-        if not value.startswith(("http://", "https://")):
-            raise ValueError("OLLAMA_BASE_URL must start with http:// or https://")
+        parsed = urlparse(value)
+        if parsed.scheme not in ("http", "https") or parsed.hostname not in LOOPBACK_HOSTS:
+            raise ValueError(
+                "OLLAMA_BASE_URL must be a loopback URL such as http://127.0.0.1:11434."
+            )
+        return value
+
+    @field_validator("hosted_open_weight_base_url")
+    @classmethod
+    def _validate_hosted_url(cls, value: str | None) -> str | None:
+        """The hosted provider receives an API key, so require HTTPS."""
+        if value is None:
+            return None
+        value = value.strip().rstrip("/")
+        parsed = urlparse(value)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            raise ValueError(
+                "HOSTED_OPEN_WEIGHT_BASE_URL must be an https:// URL without embedded credentials."
+            )
         return value
 
     @property

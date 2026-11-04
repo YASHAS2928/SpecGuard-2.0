@@ -7,7 +7,6 @@ from collections import Counter
 from collections.abc import Sequence
 from datetime import date, datetime, timezone
 
-from fastapi import status
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
@@ -28,7 +27,7 @@ def _invalid(message: str, details: dict[str, object]) -> ApiError:
         message,
         details=details,
         code=ErrorCode.VALIDATION_ERROR,
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=422,
     )
 
 
