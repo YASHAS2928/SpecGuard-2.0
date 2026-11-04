@@ -40,3 +40,7 @@ Runner tests verified unapproved cases never reach the HTTP transport, modified 
 With permitted loopback socket access, `SPECGUARD_ENABLE_HTTP_TESTS=1 python -m unittest discover -s backend/tests -v` ran 18 tests: **18 passed, 0 failed, 0 skipped**. In the restricted shell, 17 passed and the one socket-dependent in-process test skipped. Pytest is not installed in this host and PyPI DNS is unavailable; the GitHub Actions workflow is configured to install dependencies and run pytest with HTTP tests enabled, but no remote or CI run exists yet.
 
 The local branch is `main`. `gh auth status` reports an invalid login, so the private remote was not created or pushed. No GitHub Actions success is claimed. No collaborator invitations have been sent. See README for the interactive login and remote-creation commands. The repository has no chosen license pending team agreement.
+
+## Files changed in Phase 2
+
+`.github/workflows/python-tests.yml`; `README.md`; `backend/app/engine/grounding.py`; `backend/app/engine/test_generator.py`; `backend/app/engine/validator.py`; `backend/app/runner/executor.py`; `backend/tests/test_http_api.py`; `backend/tests/test_quality_engine.py`; `docs/phase2-verification.md`; `docs/quality-engine-integration.md`; `scripts/demo_quality.py`; `scripts/verify_live.py`.
