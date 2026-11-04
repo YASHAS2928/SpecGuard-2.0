@@ -1,0 +1,8 @@
+{
+  "synthetic_only": true,
+  "policies": [
+    {"id": "POL-OT-01", "version": 1, "effective_from": "2026-01-01", "effective_to": null, "source_type": "fictional", "rule_text": "Paid minutes above 480 in one shift are overtime."},
+    {"id": "POL-MEAL-02", "version": 1, "effective_from": "2026-01-01", "effective_to": null, "source_type": "fictional", "rule_text": "Deduct an approved unpaid meal once from shift span."},
+    {"id": "POL-DATE-03", "version": 1, "effective_from": "2026-01-01", "effective_to": null, "source_type": "fictional", "rule_text": "A valid midnight crossing remains one shift."}
+  ]
+}
