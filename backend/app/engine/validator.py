@@ -11,6 +11,7 @@ SEVERITY["V11"] = "WARNING"
 REQUIRED_PARTITIONS = {"T-1", "T", "T+1", "overnight", "invalid_meal", "invalid_span", "invalid_time"}
 ASSERTIONS = {"PAID_EQUALS", "OT_EQUALS", "REJECTS"}
 INPUTS = {"start_time", "end_time", "overnight", "meal_break_minutes"}
+REQUIRED_POLICIES = {"POL-OT-01", "POL-MEAL-02", "POL-DATE-03"}
 SUSPECT = re.compile(r"ignore (?:all |previous )?instructions|mark everything pass|\beval\s*\(|\bexec\s*\(", re.I)
 TARGET = "http://127.0.0.1:9000/v1/pay/calculate"
 
@@ -33,11 +34,13 @@ def validate_cases(cases: list[dict], *, requirements: dict, criteria: dict,
             issues.append(_issue("V01", "case must be an object"))
             continue
         test_id = case.get("id")
-        required = {"id", "requirement_id", "policy_ids", "rule_key", "technique",
+        required = {"id", "version", "requirement_id", "policy_ids", "rule_key", "technique",
                     "partition", "inputs", "assertion_type", "expected"}
         if (not required <= case.keys() or not isinstance(test_id, str) or not test_id
+                or type(case.get("version")) is not int or case["version"] < 1
                 or not isinstance(case.get("inputs"), dict)
-                or not INPUTS <= case["inputs"].keys()
+                or set(case["inputs"]) != INPUTS
+                or not all(isinstance(key, str) for key in case)
                 or not isinstance(case.get("policy_ids"), list)
                 or not all(isinstance(x, str) for x in case["policy_ids"])
                 or not isinstance(case.get("requirement_id"), str)
@@ -53,6 +56,8 @@ def validate_cases(cases: list[dict], *, requirements: dict, criteria: dict,
         if sources is None or not case.get("source_spans") or not all(
                 grounded(span, sources) for span in case["source_spans"]):
             issues.append(_issue("V02", "source span missing or unverified", test_id))
+        for missing_policy in sorted(REQUIRED_POLICIES - set(case["policy_ids"])):
+            issues.append(_issue("V03", "required policy missing", test_id, policy_id=missing_policy))
         for policy_id in case.get("policy_ids", []):
             policy = policies.get(policy_id) if isinstance(policies, dict) else None
             if policy is None:
@@ -71,6 +76,7 @@ def validate_cases(cases: list[dict], *, requirements: dict, criteria: dict,
         if (not isinstance(requirements, dict) or requirement_id not in requirements
                 or (criterion_id is not None and
                     (not isinstance(criteria, dict) or criterion_id not in criteria
+                     or not isinstance(criteria[criterion_id], dict)
                      or criteria[criterion_id].get("requirement_id") != requirement_id))):
             issues.append(_issue("V06", "broken requirement or criterion reference", test_id))
         try:

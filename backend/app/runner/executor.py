@@ -2,6 +2,8 @@
 
 from datetime import datetime, timezone
 from time import perf_counter
+from typing import Callable
+import copy
 import uuid
 import httpx
 
@@ -19,8 +21,9 @@ class ExecutionBlocked(ValueError):
 
 
 def execute_cases(cases: list[dict], *, selected_version: str, issues: list[dict],
+                  load_reviewed_case: Callable[[str], dict | None],
                   target: str = TARGET, client: httpx.Client | None = None) -> list[dict]:
-    """Requires caller's persisted approval plus fresh validation; returns result dicts."""
+    """Run only canonical, validated, reviewer-approved cases from trusted storage."""
     if target != TARGET:
         raise ExecutionBlocked("target is not the allowlisted mock endpoint")
     if selected_version not in VERSIONS:
@@ -31,10 +34,33 @@ def execute_cases(cases: list[dict], *, selected_version: str, issues: list[dict
         raise ExecutionBlocked("validation findings must be supplied")
     if any(issue.get("severity") == "BLOCK" for issue in issues):
         raise ExecutionBlocked("blocking validation issue exists")
+    if not callable(load_reviewed_case):
+        raise ExecutionBlocked("trusted review lookup is required")
+    ready_cases = []
     for case in cases:
-        if not isinstance(case, dict) or not {"id", "requirement_id", "policy_ids", "rule_key",
+        if not isinstance(case, dict) or not {"id", "version", "requirement_id", "policy_ids", "rule_key",
                 "partition", "technique", "inputs", "assertion_type", "expected"} <= case.keys():
             raise ExecutionBlocked("case shape is invalid")
+        if type(case["version"]) is not int or case["version"] < 1:
+            raise ExecutionBlocked("case version is invalid")
+        try:
+            reviewed = load_reviewed_case(case["id"])
+        except Exception as error:
+            raise ExecutionBlocked("trusted review lookup failed") from error
+        if not isinstance(reviewed, dict):
+            raise ExecutionBlocked("case has no trusted review record")
+        canonical = reviewed.get("case")
+        recorded_issues = reviewed.get("issues")
+        approval = reviewed.get("approval")
+        if canonical != case or recorded_issues != issues:
+            raise ExecutionBlocked("submitted case or findings differ from trusted state")
+        if (not isinstance(approval, dict) or approval.get("test_id") != case["id"]
+                or approval.get("case_version") != case.get("version")
+                or approval.get("decision") != "APPROVED"
+                or not approval.get("reviewer_id")):
+            raise ExecutionBlocked("trusted human approval is missing or stale")
+        if any(issue.get("severity") == "WARNING" for issue in issues) and not approval.get("warnings_acknowledged"):
+            raise ExecutionBlocked("validation warning requires reviewer acknowledgment")
         if case.get("approval_state") != "APPROVED" or case.get("validation_state") != "VALID":
             raise ExecutionBlocked("test must be human-approved and validated")
         if case.get("assertion_type") not in ASSERTIONS:
@@ -43,13 +69,15 @@ def execute_cases(cases: list[dict], *, selected_version: str, issues: list[dict
             raise ExecutionBlocked("case contains forbidden target")
         if len(str(case.get("inputs", "")).encode()) > 2048:
             raise ExecutionBlocked("case payload exceeds 2048 bytes")
+        ready_cases.append(copy.deepcopy(canonical))
     own_client = client is None
     if own_client:
-        client = httpx.Client(timeout=httpx.Timeout(3.0, connect=1.0), follow_redirects=False)
+        client = httpx.Client(timeout=httpx.Timeout(3.0, connect=1.0),
+                              follow_redirects=False, trust_env=False)
     run_id = str(uuid.uuid4())
     results = []
     try:
-        for case in cases:
+        for case in ready_cases:
             began = perf_counter()
             assertion = case["assertion_type"]
             result = {"run_id": run_id, "test_id": case["id"],
@@ -90,7 +118,9 @@ def execute_cases(cases: list[dict], *, selected_version: str, issues: list[dict
                         raise ValueError("mock version response does not match selection")
                     data = response.json()
                     if (not isinstance(data, dict) or type(data.get("paid_minutes")) is not int
-                            or type(data.get("overtime_minutes")) is not int):
+                            or type(data.get("overtime_minutes")) is not int
+                            or data["paid_minutes"] < 0 or data["overtime_minutes"] < 0
+                            or data["overtime_minutes"] > data["paid_minutes"]):
                         raise ValueError("invalid mock response schema")
                     result["actual"] = data
                     field = "paid_minutes" if assertion == "PAID_EQUALS" else "overtime_minutes"

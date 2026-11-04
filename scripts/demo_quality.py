@@ -2,6 +2,7 @@
 
 import json
 import os
+import copy
 from datetime import date
 from unittest.mock import patch
 
@@ -42,11 +43,20 @@ def main() -> None:
     case = next(case for case in cases if case["partition"] == "overnight")
     # Simulated human decision for this offline demo; real integration must load a persisted approval.
     case.update(validation_state="VALID", approval_state="APPROVED")
+    canonical = copy.deepcopy(case)
+    def load_reviewed_case(test_id: str) -> dict | None:
+        if test_id != canonical["id"]:
+            return None
+        return {"case": copy.deepcopy(canonical), "issues": copy.deepcopy(issues),
+                "approval": {"test_id": test_id, "case_version": canonical["version"],
+                             "decision": "APPROVED", "reviewer_id": "demo-reviewer",
+                             "warnings_acknowledged": False}}
     results = []
     for version in ("1.3.0", "1.4.0"):
         with transport_for(version) as client:
             results.extend(execute_cases([case], selected_version=version,
-                                         issues=issues, client=client))
+                                         issues=issues, load_reviewed_case=load_reviewed_case,
+                                         client=client))
     print(json.dumps({"cases_generated": len(cases), "validation_issues": issues,
                       "results": results, "defect_clusters": cluster_failures(results, [case])},
                      indent=2))

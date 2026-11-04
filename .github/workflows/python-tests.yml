@@ -12,3 +12,5 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -r backend/requirements.txt
       - run: python -m pytest backend/tests -q
+        env:
+          SPECGUARD_ENABLE_HTTP_TESTS: '1'

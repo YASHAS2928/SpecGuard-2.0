@@ -44,7 +44,8 @@ def generate_cases(requirement_id: str, criterion_id: str | None = None,
             if assertion != "REJECTS":
                 raise
             expected = {"status_code": 422}
-        cases.append({"id": f"{requirement_id}-{name}", "requirement_id": requirement_id,
+        cases.append({"id": f"{requirement_id}-{name}", "version": 1,
+                      "requirement_id": requirement_id,
                       "criterion_id": criterion_id, "policy_ids": list(policy_ids or POLICIES),
                       "rule_key": RULE_KEY, "technique": technique, "partition": partition,
                       "inputs": inputs, "assertion_type": assertion, "expected": expected,
