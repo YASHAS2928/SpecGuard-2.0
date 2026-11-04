@@ -21,11 +21,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.api import policies, requirements, specs
 from app.core.config import API_VERSION, APP_VERSION, Settings, get_settings
 from app.core.contracts import ErrorResponse
 from app.core.errors import TRACE_HEADER, register_exception_handlers
 from app.database.init_db import init_db
-from app.database.session import check_database, get_db
+from app.database.seed import seed_reference_data
+from app.database.session import check_database, get_db, session_scope
 
 logger = logging.getLogger("specguard")
 
@@ -82,6 +84,15 @@ def create_app() -> FastAPI:
         tables = init_db()
         logger.info(
             "Database ready at %s (%d tables)", settings.resolved_database_url, len(tables)
+        )
+        with session_scope() as session:
+            report = seed_reference_data(session)
+        logger.info(
+            "Reference data: %d policies created, %d present; %d SUT versions created, %d present",
+            report.policies_created,
+            report.policies_existing,
+            report.sut_versions_created,
+            report.sut_versions_existing,
         )
         logger.info(
             "AI provider: %s, model: %s",
@@ -195,6 +206,12 @@ def create_app() -> FastAPI:
             ai_provider=current.ai_provider,
             ai_model=current.active_ai_model,
         )
+
+    app.include_router(requirements.router)
+    app.include_router(policies.router)
+    app.include_router(specs.analysis_router)
+    app.include_router(specs.ambiguity_router)
+    app.include_router(specs.router)
 
     return app
 

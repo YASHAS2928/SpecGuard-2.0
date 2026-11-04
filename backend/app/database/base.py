@@ -18,8 +18,10 @@ from typing import Any
 
 from sqlalchemy import JSON, DateTime, ForeignKey, MetaData, Uuid
 from sqlalchemy import Enum as SAEnum
+from sqlalchemy.engine import Dialect
 from sqlalchemy.ext.mutable import MutableDict, MutableList
 from sqlalchemy.orm import DeclarativeBase, Mapped, MappedColumn, mapped_column
+from sqlalchemy.types import TypeDecorator
 
 NAMING_CONVENTION: dict[str, str] = {
     "ix": "ix_%(column_0_N_label)s",
@@ -40,13 +42,35 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class UTCDateTime(TypeDecorator[datetime]):
+    """Store naive UTC timestamps and return aware UTC datetimes.
+
+    Naive inputs are treated as UTC, including existing SQLite timestamps.
+    """
+
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+    def process_result_value(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        if value is None:
+            return None
+        return value.replace(tzinfo=timezone.utc)
+
+
 class Base(DeclarativeBase):
     """Declarative base with deterministic constraint names and type mappings."""
 
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
     type_annotation_map = {
         uuid.UUID: Uuid(as_uuid=True),
-        datetime: DateTime(timezone=True),
+        datetime: UTCDateTime(),
     }
 
 
@@ -60,19 +84,19 @@ class CreatedAtMixin:
     """Adds a ``created_at`` column for append-only records."""
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now, nullable=False
+        UTCDateTime(), default=utc_now, nullable=False
     )
 
 
 class TimestampMixin(CreatedAtMixin):
     """Adds ``created_at`` and ``updated_at`` columns maintained by the ORM.
 
-    SQLite does not store timezone offsets; values are written in UTC and read
-    back as naive datetimes that should be treated as UTC.
+    SQLite does not store timezone offsets; values are written as naive UTC and
+    read back with ``timezone.utc`` attached.
     """
 
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+        UTCDateTime(), default=utc_now, onupdate=utc_now, nullable=False
     )
 
 
