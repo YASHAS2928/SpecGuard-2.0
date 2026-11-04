@@ -16,6 +16,7 @@ Source of truth for every model: `backend/app/core/contracts.py`. The live OpenA
 | Actor | Every state-changing request carries `actor` and `actor_role`. The `SYSTEM` role is rejected for human actions. The MVP has no authentication; this is a documented limitation. |
 | Roles | `BUSINESS_ANALYST`, `QA_ENGINEER`, `DEVELOPER`, `ADMIN` (`SYSTEM` appears only in audit records) |
 | Times | `HH:MM`, 24-hour clock, single local timezone (daylight saving is out of scope) |
+| Timestamps | ISO 8601 UTC with `Z` or `+00:00`, consistent before and after database reload. SQLite stores naive UTC; the shared `UTCDateTime` type restores `timezone.utc` on read and converts offset-aware inputs to UTC on write. Naive inputs and existing naive timestamps are treated as UTC. |
 
 ### Standard error envelope
 
@@ -32,6 +33,7 @@ Source of truth for every model: `backend/app/core/contracts.py`. The live OpenA
 
 | HTTP | `error.code` values |
 |---|---|
+| 403 | `FORBIDDEN` |
 | 404 | `NOT_FOUND` |
 | 405 | `METHOD_NOT_ALLOWED` |
 | 409 | `CONFLICT`, `STATE_TRANSITION_NOT_ALLOWED`, `SPEC_NOT_APPROVABLE`, `TEST_NOT_APPROVABLE` |
@@ -116,6 +118,10 @@ Creates the next immutable version. If the requirement already had an approved s
 ### GET /requirements/{id} — M1 (Milestone 4)
 **200** `RequirementResponse` with all versions, newest last. **404** if not found.
 
+### GET /requirements — M1 (Milestone 4)
+**200** `RequirementResponse[]`, ordered by requirement code, with all versions
+in ascending version order. The MVP returns the complete list without pagination.
+
 ### GET /policies — M1 (Milestone 4)
 Query parameters: `effective_on` (date, optional, defaults to today), `code` (e.g. `POL-OT-01`, optional), `include_all_versions` (bool, default `false`).
 
@@ -127,9 +133,58 @@ Query parameters: `effective_on` (date, optional, defaults to today), `code` (e.
   "effective_from": "2026-01-01", "effective_to": "2026-12-31", "fictional": true}]
 ```
 
+### Milestone 4 reference data and audit behavior
+
+Startup seeds missing fictional policies and mock SUT versions transactionally.
+Repeating startup does not duplicate or overwrite existing rows. If an existing
+seeded policy's rule text, SHA-256, or effective dates differ, startup fails
+explicitly rather than replacing that policy version.
+
+- `POL-OT-01@v1`: 480-minute threshold, effective 2026-01-01 through 2026-12-31.
+- `POL-OT-01@v2`: 450-minute threshold, effective from 2027-01-01.
+- `POL-MEAL-02@v1` and `POL-DATE-03@v1`: effective from 2026-01-01.
+- Mock SUT `mock-time-to-pay`: versions `1.3.0` and `1.4.0`.
+
+Policy listing uses inclusive effective-date boundaries. Requirement creation
+and versioning require existing policy references and reject citing multiple
+versions of one policy code. They allow announced future versions; effective-date
+validation during analysis belongs to the later validation milestone.
+
+Creating a requirement writes both requirement-created and version-created audit
+events in the same transaction. Appending a version writes a version-created
+event, preserving earlier versions. A new version resets `ANALYZED` to `DRAFT`;
+`SPEC_APPROVED` or `CHANGED` becomes/remains `CHANGED`. Audit events include the
+actor, trace ID, deterministic SHA-256 snapshot hash, and status-transition details.
+Shared helpers are `app.core.audit.canonical_json`, `sha256_hex`, and
+`record_audit_event`; callers commit the transaction.
+
+These endpoints use the unprefixed paths shown above. No existing development
+database is migrated by this milestone. Historical requirement deletion
+protection still depends on the existing database having the current `RESTRICT`
+foreign key schema. Audit immutability remains enforced by ORM listeners, not
+database triggers; raw SQL or bulk operations can bypass those listeners.
+
 ---
 
 ## Analysis and specification
+
+Analyze, resolve, and approve require `BUSINESS_ANALYST`, `QA_ENGINEER`, or
+`ADMIN`. Other roles receive **403** `FORBIDDEN` (the MVP still has no
+authentication).
+
+The frozen AI protocol is `app.ai.integration_interface.RequirementAI`.
+`AIResult` carries validated output and call metadata. The provider factory loads
+Groq/Gemini implementations lazily and returns **503** until the selected
+provider is configured and delivered. No provider silently falls back to fake.
+The fake provider is a deterministic RQ-014 demonstration, not an LLM: it adapts
+the threshold to the cited policy but does not interpret arbitrary requirements.
+Its edge-case suggestions include one deliberately incorrect claimed expectation
+for the later deterministic validator to detect.
+
+The Quality Engine integration point is `app.engine.interface.check_spec`.
+Until that interface is delivered, analysis leaves `grounded: null`, includes a
+clear message, and approval is blocked. Automated workflow tests use a test-only
+reference checker; this is not a production grounding implementation.
 
 ### POST /requirement-versions/{id}/analyze — M1 route, M3 AI (Milestone 5)
 Runs AI extraction, then deterministic checks, and stores a `DRAFT` spec with its rules, ambiguities and assumptions.
@@ -185,10 +240,29 @@ Runs AI extraction, then deterministic checks, and stores a `DRAFT` spec with it
 ```
 Validation: the provider output must parse as `RequirementExtraction` (closed rule types, typed parameters, restricted patches, no URLs or code in AI text). A rule whose `source_span` isn't found in the requirement or its cited policy is stored with `grounded: false` and a `V02_UNGROUNDED_SPAN` block issue.
 
+`open_ambiguities` counts every non-`RESOLVED` ambiguity, including `DEFERRED`.
+Re-analysis supersedes earlier drafts. An approved spec remains approved until
+another spec of the same requirement is approved.
+
 **Errors:**
 - 404 · 409 `CONFLICT` (an approved spec already exists for this version and `force` is false)
 - 503 `AI_PROVIDER_NOT_CONFIGURED`
-- 502 `AI_PROVIDER_ERROR` / `AI_OUTPUT_INVALID` (after one retry; `details.llm_call_id` is included). The response is never presented as a successful analysis. `mode: "fake"` appears only when `AI_PROVIDER=fake`.
+- 502 `AI_PROVIDER_ERROR` / `AI_OUTPUT_INVALID` (provider retry policy uses `ai_max_retries`). Failed provider calls are persisted in `llm_calls` with `fallback=false`, and no spec is stored. The response is never presented as a successful analysis. `mode: "fake"` appears only when `AI_PROVIDER=fake`.
+- 503 `INTEGRATION_UNAVAILABLE` if the grounding checker fails; no draft is committed.
+
+Analysis rejects missing cited policies rather than silently omitting them.
+Malformed provider result envelopes are logged as `AI_OUTPUT_INVALID`.
+A V02 grounding issue must identify a known rule via `detail.rule_key`; an
+invalid checker result returns `INTEGRATION_UNAVAILABLE` and rolls back draft
+creation and supersession changes.
+
+### GET /specs/{id} — M1 (Milestone 5)
+**200** `SpecResponse` with rules, ambiguities, and active validation issues.
+**404** if not found; invalid UUIDs receive **422**.
+
+### GET /requirement-versions/{id}/specs — M1 (Milestone 5)
+**200** `SpecResponse[]`, ordered by spec version, oldest first.
+**404** if the requirement version does not exist.
 
 ### POST /ambiguities/{id}/resolve — M1 (Milestone 5)
 Applies the chosen option's patch to the `DRAFT` spec, or defers the ambiguity.
@@ -196,7 +270,10 @@ Applies the chosen option's patch to the `DRAFT` spec, or defers the ambiguity.
 **Request** (`ResolveAmbiguityRequest`): `{"option_index": 0, "actor": "asha.ba", "actor_role": "BUSINESS_ANALYST"}` or `{"defer": true, "comment": "Waiting for payroll owner.", "actor": "asha.ba", "actor_role": "BUSINESS_ANALYST"}`. Exactly one of `option_index` / `defer` is required.
 
 **200** `SpecResponse` (the updated spec; the ambiguity's `status` is `RESOLVED` or `DEFERRED`).
-**Errors:** 404 · 409 `STATE_TRANSITION_NOT_ALLOWED` (spec not `DRAFT` or ambiguity not `OPEN`) · 422 (`option_index` out of range).
+Deferred ambiguities can be resolved later. Patches are validated against the
+typed rule parameters before any changes are applied.
+
+**Errors:** 404 · 409 `STATE_TRANSITION_NOT_ALLOWED` (spec not `DRAFT`, ambiguity already `RESOLVED`, or attempting to defer it again) · 422 (`option_index` out of range or invalid patch).
 
 ### POST /specs/{id}/approve — M1 (Milestone 5)
 **Request** (`ApproveSpecRequest`): `{"actor": "asha.ba", "actor_role": "BUSINESS_ANALYST", "comment": "Rules confirmed with payroll."}`
@@ -206,10 +283,13 @@ Applies the chosen option's patch to the `DRAFT` spec, or defers the ambiguity.
 **Errors:** 404 · 409 `SPEC_NOT_APPROVABLE`, e.g.
 ```json
 {"error": {"code": "SPEC_NOT_APPROVABLE", "message": "Specification 3 cannot be approved yet.",
- "details": {"open_ambiguities": ["AMB-1"], "deferred_ambiguities": [], "unresolved_params": ["MEAL_DEDUCTION.min_qualifying"], "blocking_issues": ["V13_UNRESOLVED_PARAMETER"]},
+ "details": {"open_ambiguities": ["AMB-1"], "deferred_ambiguities": [], "unresolved_params": ["MEAL_DEDUCTION.min_qualifying"], "blocking_issues": ["V13_UNRESOLVED_PARAMETER"], "ungrounded_rules": []},
  "trace_id": "..."}}
 ```
 · 409 `STATE_TRANSITION_NOT_ALLOWED` (spec is not `DRAFT`).
+
+`ungrounded_rules` lists rules whose grounding check failed or did not run.
+Successful approval records a review and an audit event in the same transaction.
 
 ---
 
@@ -306,7 +386,10 @@ Query parameters: `status`, `spec_id` (optional).
 ## Change impact
 
 ### POST /specs/{new_id}/impact — M1 route, M2 classification (Milestone 7)
-Compares an **approved** newer spec with an earlier approved spec of the same requirement. Impacted tests are classified, `STALE` tests leave the runnable set until re-approved, and a rerun plan is produced.
+Compares an **approved** newer spec with an earlier `APPROVED` or `SUPERSEDED`
+spec of the same requirement. Approving a newer spec supersedes the older one.
+Impacted tests are classified, `STALE` tests leave the runnable set until
+re-approved, and a rerun plan is produced.
 
 **Request** (`ChangeImpactRequest`): `{"from_spec_id": "3b1f6e0a-7c2d-4a9e-9f31-5d8c2e4a6b01", "actor": "ravi.qa", "actor_role": "QA_ENGINEER"}`
 
