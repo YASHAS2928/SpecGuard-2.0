@@ -121,6 +121,8 @@ class AIProvider(StrEnum):
     GROQ = "groq"
     GEMINI = "gemini"
     FAKE = "fake"
+    OLLAMA = "ollama"
+    HOSTED_OPEN_WEIGHT = "hosted_open_weight"
 
 
 class ActorRole(StrEnum):
