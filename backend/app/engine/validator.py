@@ -24,8 +24,12 @@ def _issue(code: str, message: str, test_id: str | None = None, **details) -> di
 def validate_cases(cases: list[dict], *, requirements: dict, criteria: dict,
                    policies: dict, sources: dict[str, str] | None,
                    on_date: date, target: str = TARGET,
-                   required_partitions: set[str] | None = None) -> list[dict]:
-    """Caller supplies authoritative registries; missing registries fail closed."""
+                   required_partitions: set[str] | None = None,
+                   oracle=calculate) -> list[dict]:
+    """Caller supplies authoritative registries; missing registries fail closed.
+
+    ``oracle`` recomputes expected values (default: the 480-minute-threshold oracle).
+    """
     issues, signatures, covered = [], set(), set()
     if not isinstance(cases, list):
         return [_issue("V01", "cases must be a list")]
@@ -80,7 +84,7 @@ def validate_cases(cases: list[dict], *, requirements: dict, criteria: dict,
                      or criteria[criterion_id].get("requirement_id") != requirement_id))):
             issues.append(_issue("V06", "broken requirement or criterion reference", test_id))
         try:
-            result = calculate(**case["inputs"])
+            result = oracle(**case["inputs"])
             oracle_expected = {"paid_minutes": result.paid_minutes,
                                "overtime_minutes": result.overtime_minutes}
             if case["assertion_type"] == "REJECTS":

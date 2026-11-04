@@ -7,10 +7,10 @@ import copy
 import uuid
 import httpx
 
-from backend.app.engine.oracle import DomainError, calculate
+from ..engine.oracle import DomainError, calculate
 
 TARGET = "http://127.0.0.1:9000/v1/pay/calculate"
-VERSIONS = {"1.3.0", "1.3.0-b", "1.3.0-c", "1.4.0"}
+VERSIONS = {"1.3.0", "1.3.0-b", "1.3.0-c", "1.4.0", "1.5.0"}
 ASSERTIONS = {"PAID_EQUALS", "OT_EQUALS", "REJECTS"}
 MAX_CASES = 100
 MAX_RESPONSE_BYTES = 16384
@@ -22,9 +22,15 @@ class ExecutionBlocked(ValueError):
 
 def execute_cases(cases: list[dict], *, selected_version: str, issues: list[dict],
                   load_reviewed_case: Callable[[str], dict | None],
-                  target: str = TARGET, client: httpx.Client | None = None) -> list[dict]:
-    """Run only canonical, validated, reviewer-approved cases from trusted storage."""
-    if target != TARGET:
+                  target: str = TARGET, client: httpx.Client | None = None,
+                  allowed_target: str = TARGET, oracle: Callable = calculate) -> list[dict]:
+    """Run only canonical, validated, reviewer-approved cases from trusted storage.
+
+    ``allowed_target`` is the single allowlisted endpoint (the backend derives it from a
+    loopback-only setting); ``oracle`` recomputes the expected value, by default the
+    480-minute-threshold oracle.
+    """
+    if target != allowed_target:
         raise ExecutionBlocked("target is not the allowlisted mock endpoint")
     if selected_version not in VERSIONS:
         raise ExecutionBlocked("unrecognized mock version")
@@ -65,7 +71,7 @@ def execute_cases(cases: list[dict], *, selected_version: str, issues: list[dict
             raise ExecutionBlocked("test must be human-approved and validated")
         if case.get("assertion_type") not in ASSERTIONS:
             raise ExecutionBlocked("unsupported assertion type")
-        if case.get("target") not in (None, TARGET):
+        if case.get("target") not in (None, allowed_target):
             raise ExecutionBlocked("case contains forbidden target")
         if len(str(case.get("inputs", "")).encode()) > 2048:
             raise ExecutionBlocked("case payload exceeds 2048 bytes")
@@ -90,9 +96,9 @@ def execute_cases(cases: list[dict], *, selected_version: str, issues: list[dict
                       "timestamp": datetime.now(timezone.utc).isoformat()}
             try:
                 try:
-                    oracle = calculate(**case["inputs"])
-                    expected = {"paid_minutes": oracle.paid_minutes,
-                                "overtime_minutes": oracle.overtime_minutes}
+                    result_pay = oracle(**case["inputs"])
+                    expected = {"paid_minutes": result_pay.paid_minutes,
+                                "overtime_minutes": result_pay.overtime_minutes}
                     if assertion == "REJECTS":
                         raise ExecutionBlocked("REJECTS case is valid")
                 except (DomainError, TypeError):
