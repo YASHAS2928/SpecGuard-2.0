@@ -26,7 +26,7 @@ FAKE_MODEL_NAME: str = "fake-deterministic-v1"
 GROQ_KEYS_URL: str = "https://console.groq.com/keys"
 GEMINI_KEYS_URL: str = "https://aistudio.google.com/apikey"
 
-AIProviderName = Literal["groq", "gemini", "fake"]
+AIProviderName = Literal["groq", "gemini", "fake", "ollama", "hosted_open_weight"]
 AppEnvironment = Literal["development", "test", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     groq_model: str | None = None
     gemini_api_key: SecretStr | None = None
     gemini_model: str | None = None
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_model: str | None = None
+    hosted_open_weight_base_url: str | None = None
+    hosted_open_weight_api_key: SecretStr | None = None
+    hosted_open_weight_model: str | None = None
     ai_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
     ai_max_retries: int = Field(default=1, ge=0, le=3)
 
@@ -62,7 +67,9 @@ class Settings(BaseSettings):
     log_level: LogLevel = "INFO"
 
     @field_validator(
-        "groq_api_key", "gemini_api_key", "groq_model", "gemini_model", mode="before"
+        "groq_api_key", "gemini_api_key", "groq_model", "gemini_model",
+        "ollama_model", "hosted_open_weight_base_url", "hosted_open_weight_api_key",
+        "hosted_open_weight_model", mode="before"
     )
     @classmethod
     def _blank_to_none(cls, value: Any) -> Any:
@@ -104,6 +111,14 @@ class Settings(BaseSettings):
             raise ValueError("MOCK_API_BASE_URL must start with http:// or https://")
         return value
 
+    @field_validator("ollama_base_url")
+    @classmethod
+    def _validate_ollama_url(cls, value: str) -> str:
+        value = value.strip().rstrip("/")
+        if not value.startswith(("http://", "https://")):
+            raise ValueError("OLLAMA_BASE_URL must start with http:// or https://")
+        return value
+
     @property
     def resolved_database_url(self) -> str:
         """Return the database URL with relative SQLite paths anchored to ``backend/``.
@@ -132,6 +147,10 @@ class Settings(BaseSettings):
             return self.groq_model
         if self.ai_provider == "gemini":
             return self.gemini_model
+        if self.ai_provider == "ollama":
+            return self.ollama_model
+        if self.ai_provider == "hosted_open_weight":
+            return self.hosted_open_weight_model
         return FAKE_MODEL_NAME
 
     def ai_configuration_issues(self) -> list[str]:
@@ -159,6 +178,16 @@ class Settings(BaseSettings):
                     "AI_PROVIDER=gemini but GEMINI_MODEL is not set. Choose a current Gemini "
                     "model that supports structured JSON output and add it to backend/.env."
                 )
+        elif self.ai_provider == "ollama":
+            if self.ollama_model is None:
+                issues.append("AI_PROVIDER=ollama but OLLAMA_MODEL is not set.")
+        elif self.ai_provider == "hosted_open_weight":
+            if self.hosted_open_weight_base_url is None:
+                issues.append("AI_PROVIDER=hosted_open_weight but HOSTED_OPEN_WEIGHT_BASE_URL is not set.")
+            if self.hosted_open_weight_api_key is None:
+                issues.append("AI_PROVIDER=hosted_open_weight but HOSTED_OPEN_WEIGHT_API_KEY is not set.")
+            if self.hosted_open_weight_model is None:
+                issues.append("AI_PROVIDER=hosted_open_weight but HOSTED_OPEN_WEIGHT_MODEL is not set.")
         return issues
 
     @property
