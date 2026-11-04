@@ -10,7 +10,10 @@ from sqlalchemy.orm import Session
 from app.ai.adapter import get_ai_provider
 from app.ai.integration_interface import RequirementAI
 from app.core.config import Settings, get_settings
+from app.core.errors import AIProviderNotConfiguredError
 from app.database.session import get_db
+from app.engine.protocol import QualityEngine
+from app.engine.quality_engine import QualityEngineImpl
 from app.services.integration_service import SpecChecker, get_spec_checker
 
 
@@ -32,3 +35,20 @@ def get_ai(settings: AppSettings) -> RequirementAI:
 
 AI = Annotated[RequirementAI, Depends(get_ai)]
 SpecCheckerDep = Annotated[SpecChecker | None, Depends(get_spec_checker)]
+
+
+def get_optional_ai(settings: AppSettings) -> RequirementAI | None:
+    """Return the AI provider, or ``None`` when it is not configured (engine-only features)."""
+    try:
+        return get_ai_provider(settings)
+    except AIProviderNotConfiguredError:
+        return None
+
+
+def get_quality_engine() -> QualityEngine:
+    """The single Quality Engine implementation."""
+    return QualityEngineImpl()
+
+
+OptionalAI = Annotated[RequirementAI | None, Depends(get_optional_ai)]
+Engine = Annotated[QualityEngine, Depends(get_quality_engine)]

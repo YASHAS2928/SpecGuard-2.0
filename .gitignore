@@ -6,3 +6,10 @@ __pycache__/
 .coverage
 .env
 *.db
+.tools/
+.npm-cache/
+.tmp/
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+*.tsbuildinfo

@@ -8,9 +8,15 @@ file and the fake AI provider. Real API keys in ``backend/.env`` are overridden.
 from __future__ import annotations
 
 import os
+import socket
+import threading
+import time
 from collections.abc import Iterator
+from dataclasses import dataclass
 
+import httpx
 import pytest
+import uvicorn
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -52,3 +58,39 @@ def db_session() -> Iterator[Session]:
     finally:
         session.close()
         engine.dispose()
+
+
+@dataclass
+class MockServer:
+    """The real synthetic Time-to-Pay API running on a free loopback port."""
+
+    base_url: str
+
+    def use(self, version: str) -> None:
+        response = httpx.post(f"{self.base_url}/admin/version", json={"version": version}, trust_env=False)
+        assert response.status_code == 200, response.text
+
+    def reset(self) -> None:
+        """Drop the runtime selection so the MOCK_VERSION environment variable applies again."""
+        assert httpx.delete(f"{self.base_url}/admin/version", trust_env=False).status_code == 200
+
+
+@pytest.fixture(scope="session")
+def mock_server() -> Iterator[MockServer]:
+    from mock_api.main import app as mock_app
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    server = uvicorn.Server(uvicorn.Config(mock_app, host="127.0.0.1", port=port, log_level="error"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 10
+    while not server.started and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert server.started, "mock API did not start"
+    mock = MockServer(f"http://127.0.0.1:{port}")
+    yield mock
+    mock.reset()
+    server.should_exit = True
+    thread.join(timeout=5)

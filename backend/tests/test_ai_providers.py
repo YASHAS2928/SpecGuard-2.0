@@ -125,20 +125,20 @@ def test_factory_reports_provider_module_not_delivered(monkeypatch: pytest.Monke
     settings = Settings(_env_file=None, ai_provider="groq", groq_api_key="placeholder", groq_model="m")
     with pytest.raises(AIProviderNotConfiguredError) as caught:
         get_ai_provider(settings)
-    assert "not implemented yet" in caught.value.message
+    assert "not implemented in this build" in caught.value.message
 
 
 def test_factory_reports_missing_sdk_package(monkeypatch: pytest.MonkeyPatch) -> None:
     patch_import(
         monkeypatch,
-        {"app.ai.gemini_provider": ModuleNotFoundError("No module named 'google'", name="google")},
+        {"app.ai.groq_provider": ModuleNotFoundError("No module named 'groq'", name="groq")},
     )
     settings = Settings(
-        _env_file=None, ai_provider="gemini", gemini_api_key="placeholder", gemini_model="m"
+        _env_file=None, ai_provider="groq", groq_api_key="placeholder", groq_model="m"
     )
     with pytest.raises(AIProviderNotConfiguredError) as caught:
         get_ai_provider(settings)
-    assert "pip install google-genai" in caught.value.message
+    assert "pip install groq" in caught.value.message
 
 
 def test_factory_rejects_a_class_that_does_not_implement_the_interface(

@@ -174,17 +174,36 @@ authentication).
 
 The frozen AI protocol is `app.ai.integration_interface.RequirementAI`.
 `AIResult` carries validated output and call metadata. The provider factory loads
-Groq/Gemini implementations lazily and returns **503** until the selected
-provider is configured and delivered. No provider silently falls back to fake.
+provider implementations lazily (`fake`, `ollama`, `hosted_open_weight` and `groq`)
+and returns **503** until the selected provider is configured; `gemini` is not
+implemented and says so. No provider silently falls back to fake;
+see `docs/ai-integration.md`.
 The fake provider is a deterministic RQ-014 demonstration, not an LLM: it adapts
 the threshold to the cited policy but does not interpret arbitrary requirements.
 Its edge-case suggestions include one deliberately incorrect claimed expectation
 for the later deterministic validator to detect.
 
-The Quality Engine integration point is `app.engine.interface.check_spec`.
-Until that interface is delivered, analysis leaves `grounded: null`, includes a
-clear message, and approval is blocked. Automated workflow tests use a test-only
-reference checker; this is not a production grounding implementation.
+The Quality Engine integration point is `app.engine.interface.check_spec`
+(delivered in `backend/app/engine/interface.py`):
+
+```python
+check_spec(extraction: RequirementExtraction, requirement_text: str,
+           policies: Sequence[PolicyResponse]) -> list[ValidationIssue]
+```
+
+It is pure Python and returns only blocking spec-level issues:
+
+| Code | Meaning |
+|---|---|
+| `V02_UNGROUNDED_SPAN` | `source_span` is not an exact, case-sensitive, whitespace-normalised substring of the requirement text or of the rule's **cited** policy text (rules without `policy_ref` use the requirement text only). `detail.rule_key` names the rule; the backend sets `grounded=false` for exactly those rules. |
+| `V03_POLICY_UNKNOWN` | A rule cites a policy that is not attached to the requirement version (also reported as V02). |
+| `V04_POLICY_NOT_EFFECTIVE` | An attached policy has **expired** (`effective_to` before today, UTC, inclusive). Upcoming policies such as `POL-OT-01@v2` are allowed. |
+
+An empty list means every rule is grounded. If the module is missing, analysis
+leaves `grounded: null`, includes a clear message, and approval is blocked. A
+raised exception or a non-`ValidationIssue` result returns 503 and rolls back.
+The test-case validator (`validate_cases`) keeps its own stricter V04, which
+takes its evaluation date from the caller.
 
 ### POST /requirement-versions/{id}/analyze — M1 route, M3 AI (Milestone 5)
 Runs AI extraction, then deterministic checks, and stores a `DRAFT` spec with its rules, ambiguities and assumptions.
@@ -233,7 +252,7 @@ Runs AI extraction, then deterministic checks, and stores a `DRAFT` spec with it
     "open_ambiguities": 1, "blocking_issue_count": 1, "parent_spec_id": null,
     "approved_by": null, "approved_at": null, "created_at": "2026-11-04T10:05:00Z"
   },
-  "analysis": {"mode": "llm", "provider": "groq", "model": "<GROQ_MODEL>", "prompt_version": "ext-1.0",
+  "analysis": {"mode": "llm", "provider": "groq", "model": "<GROQ_MODEL>", "prompt_version": "ext-1.1",
                "valid_first_try": true, "retries": 0, "fallback_used": false, "latency_ms": 2140,
                "llm_call_id": "b7c8d9e0-f1a2-4b3c-8d4e-5f6a7b8c9d01", "message": null}
 }
@@ -312,7 +331,9 @@ Generates criteria and engine tests (boundary, partition, decision table, negati
 ```
 Counts in this example are illustrative; real counts depend on the spec. If the AI provider fails, engine tests are still returned, with `ai_edge_cases: "unavailable"` and an explanatory `ai_message`.
 
-**Errors:** 404 · 409 `STATE_TRANSITION_NOT_ALLOWED` (spec not `APPROVED`) · 503 `INTEGRATION_UNAVAILABLE` (Quality Engine not integrated).
+**Errors:** 403 `FORBIDDEN` (DEVELOPER) · 404 · 409 `STATE_TRANSITION_NOT_ALLOWED` (spec not `APPROVED`) · 503 `INTEGRATION_UNAVAILABLE` (the Quality Engine failed; nothing is stored).
+
+**Behaviour.** The deterministic oracle computes every `expected` value from the approved spec's parameters (threshold, meal minimum). **Designing again is idempotent:** an engine test is skipped when an engine test with the same fixture (inputs + assertion) already exists, and likewise for AI tests, so a second call never duplicates tests and never changes the status of existing ones (an `APPROVED` test stays `APPROVED`). `tests` always lists every test of the spec; `added` counts the tests stored by this call and `already_present` the designed tests that already existed. AI edge cases are added once: if none exist and `include_ai_edge_cases` is true the AI is called (so a failed AI call can be retried later and its tests appended); if AI tests already exist the AI is not called again and `ai_edge_cases` is `"already_present"`. AI edge cases contribute inputs and an optional `ai_claimed_expected`, stored separately; a claim that differs from the oracle raises `V08_AI_CLAIM_MISMATCH` and the oracle value is what is stored. A test with any `BLOCK` issue is stored `BLOCKED` (for example `V05` unsupported rule, `V07` oracle cannot calculate, `V08`, `V09` duplicate); instruction-like text raises the `V11` warning only. Policy dates are evaluated on or after the latest `effective_from` of the attached policies, so designing for the announced `POL-OT-01@v2` does not block every test. If the AI provider fails or is not configured the engine tests are still stored and returned with `ai_edge_cases: "unavailable"`; the failed call is logged in `llm_calls`. `tests[].inputs` is **`TestFixtureInputs`**: lenient strings and integers, because negative tests deliberately send values such as `"9am"` or `-1` (the strict `TestInputs` is still used for AI suggestions). Criteria `AC-n` are numbered by rule key; the first entry of `rule_keys` is the test's primary rule.
 
 ### GET /specs/{id}/tests — M1 (Milestone 6)
 Query parameters: `status`, `technique`, `origin` (optional enums).
@@ -365,7 +386,9 @@ Runs **approved** tests only, against the mock Time-to-Pay API at `MOCK_API_BASE
 ```
 An unreachable mock API produces `ERROR` results, never passes.
 
-**Errors:** 404 · 409 `CONFLICT` (no approved tests, or listed tests aren't `APPROVED`) · 503 `INTEGRATION_UNAVAILABLE` (runner not integrated).
+**Errors:** 404 · 409 `CONFLICT` (no approved tests, or listed tests aren't `APPROVED`) · 409 `STATE_TRANSITION_NOT_ALLOWED` (spec not `APPROVED`, so a superseded spec cannot be run) · 403 `FORBIDDEN` (DEVELOPER) · 503 `INTEGRATION_UNAVAILABLE` (`MOCK_API_BASE_URL` is not a loopback address).
+
+**Behaviour.** Each test runs through the allowlisted runner; the target is `MOCK_API_BASE_URL` + `/v1/pay/calculate`, loopback only. The runner re-checks the stored expected value against the oracle and the human approval record before every call. The implementation version is read from the mock (`GET /admin/version`) and stored as `sut_version`. A mock that is unreachable, a blocked case, a version mismatch or a malformed response is an `ERROR` result with an explanation, never a pass; a run where every result is `ERROR` has status `FAILED` and `sut_version` `"unknown"`. `STALE`, `OBSOLETE`, `BLOCKED`, `DRAFT` and `REJECTED` tests are never run. Failed results (`FAIL` only) are clustered into defects after each run.
 
 ### GET /runs/{id} — M1 (Milestone 6)
 **200** `RunResponse`. **404** if not found.
@@ -380,6 +403,8 @@ Query parameters: `status`, `spec_id` (optional).
   "evidence_result_ids": ["f1e2d3c4-b5a6-4978-8a9b-0c1d2e3f4a91", "f1e2d3c4-b5a6-4978-8a9b-0c1d2e3f4a92"], "hypothesis": null, "created_at": "2026-11-04T10:20:02Z"}]
 ```
 `hypothesis` (P1) is always labelled `"HYPOTHESIS"` and cites result IDs.
+
+**Defect lifecycle.** Failures are grouped by primary rule, the `overnight` input flag and the assertion (`cluster_key` `RULE|overnight=true|ASSERTION`) and upserted by `(spec_id, cluster_key)`. A new cluster opens a defect `OPEN`. When every test behind an `OPEN` defect runs and passes, it becomes `FIXED`; when they pass again in a later run, `VERIFIED`. A cluster that fails again reopens the defect. A run that does not include a defect's tests leaves it unchanged.
 
 ---
 
@@ -409,7 +434,9 @@ re-approved, and a rerun plan is produced.
 ```
 Counts are illustrative.
 
-**Errors:** 404 · 409 `STATE_TRANSITION_NOT_ALLOWED` (either spec not approved, or the specs belong to different requirements) · 503 `INTEGRATION_UNAVAILABLE`.
+**Errors:** 404 · 403 `FORBIDDEN` (DEVELOPER) · 409 `STATE_TRANSITION_NOT_ALLOWED` (either spec not approved, the specs belong to different requirements, or a spec is compared with itself) · 409 `CONFLICT` (this pair was already analysed) · 503 `INTEGRATION_UNAVAILABLE`.
+
+**Classification.** Recommended order: approve the new spec, run **design-tests on it (with AI if wanted)**, then call impact. Scenarios are matched by fixture hash (inputs + assertion) against the **runnable (non-blocked)** tests of the new spec. Same scenario and same oracle expected value: `UNAFFECTED`; same scenario, different expected value: `STALE_EXPECTED`; an old scenario with no runnable counterpart: `OBSOLETE` (for AI tests the reason says "The AI edge case has no runnable counterpart on the new specification."); a runnable new scenario with no old counterpart: `NEW`. Approved `STALE_EXPECTED` tests become `STALE` and `OBSOLETE` tests become `OBSOLETE` (a `BLOCKED` test keeps its status). The new spec's tests are linked to the old ones through `supersedes_id`; **nothing is auto-approved**, humans re-approve. `rerun_test_ids` are the new tests that replace a stale test or are `NEW`, without duplicates and without blocked tests. `impacted_tests[].test_id` is the old test (the new test for `NEW`). **`warnings`** (not stored, returned by this call only) tells the user to design tests first when the new spec had no tests and impact designed the engine tests itself; in that case AI tests of the earlier spec are `OBSOLETE` and the warning says how many. For the RQ-014 480→450 scenario with a 17-test earlier spec the counts are STALE_EXPECTED 2 / OBSOLETE 4 / NEW 3 / UNAFFECTED 11 in the recommended order and 2 / 5 / 3 / 10 (with 2 warnings) when impact is called first.
 
 ---
 
@@ -440,3 +467,18 @@ Query parameters: `entity_type`, `entity_id` (UUID), `action`, `limit` (1–500,
  "total": 1, "limit": 100, "offset": 0}
 ```
 Hashes are SHA-256 of canonical JSON (sorted keys, no extra whitespace).
+
+---
+
+## Mock Time-to-Pay API (development only)
+
+`POST /v1/pay/calculate` is served by `mock_api` on a loopback address. Implementation versions: `1.3.0` (overnight flag ignored), `1.3.0-b` (off-by-one overtime), `1.3.0-c` (meal deducted twice), `1.4.0` (correct, threshold 480) and `1.5.0` (announced change, threshold 450). The served version is, in order: the runtime selection, then the `MOCK_VERSION` environment variable, then `1.4.0`.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /version` | `{"version": "1.4.0", "meal_minimum": 30, "available": [...]}`; read by the backend before every run |
+| `GET /admin/version` | `{"version": "1.4.0", "available": [...]}` |
+| `POST /admin/version` | `{"version": "1.5.0"}` switches the implementation without a restart (422 for unknown versions) |
+| `DELETE /admin/version` | drops the runtime selection (back to `MOCK_VERSION` or `1.4.0`) |
+
+The mock applies a **meal minimum** to every version: a recorded break shorter than `MOCK_MEAL_MIN` (default 30 minutes) is not deducted, which matches the clarification option "Deduct only breaks of 30 minutes or more" and the oracle's `min_qualifying`. `GET /version` (no auth, loopback use) returns `{"version", "meal_minimum", "available"}` and is what the backend reads to learn the served version; the seeded bugs of each version are unchanged. An invalid `MOCK_MEAL_MIN` gives 503.

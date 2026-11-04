@@ -905,12 +905,25 @@ class CriterionResponse(ContractModel):
 
 
 class TestInputs(ContractModel):
-    """Fixture inputs sent to the mock Time-to-Pay API."""
+    """Fixture inputs sent to the mock Time-to-Pay API (strict: used for AI suggestions)."""
+
+    __test__ = False
 
     start_time: TimeHHMM
     end_time: TimeHHMM
     overnight: bool
     meal_break_minutes: int | None = Field(default=None, ge=0, le=1440)
+
+
+class TestFixtureInputs(ContractModel):
+    """Stored fixture inputs. Lenient on purpose: negative tests send deliberately invalid values."""
+
+    __test__ = False
+
+    start_time: Annotated[str, StringConstraints(max_length=16)]
+    end_time: Annotated[str, StringConstraints(max_length=16)]
+    overnight: bool
+    meal_break_minutes: int | None = None
 
 
 class ExpectedResult(ContractModel):
@@ -928,6 +941,8 @@ class ExpectedResult(ContractModel):
 
 
 class TestCaseResponse(ContractModel):
+    __test__ = False
+
     model_config = ConfigDict(
         json_schema_extra={
             "examples": [
@@ -965,7 +980,7 @@ class TestCaseResponse(ContractModel):
     tc_code: TestCode
     origin: TestOrigin
     technique: TestTechnique
-    inputs: TestInputs
+    inputs: TestFixtureInputs
     assertion: AssertionTemplate
     expected: ExpectedResult
     ai_claimed_expected: ExpectedResult | None = None
@@ -998,11 +1013,15 @@ class DesignTestsResponse(ContractModel):
     tests: list[TestCaseResponse]
     counts_by_technique: dict[TestTechnique, int]
     blocked_count: int = Field(ge=0)
-    ai_edge_cases: Literal["generated", "unavailable", "disabled"]
+    ai_edge_cases: Literal["generated", "unavailable", "disabled", "already_present"]
     ai_message: str | None = None
+    added: int = Field(default=0, ge=0)
+    already_present: int = Field(default=0, ge=0)
 
 
 class TestReviewRequest(ActorFields):
+    __test__ = False
+
     model_config = ConfigDict(
         json_schema_extra={
             "examples": [
@@ -1046,6 +1065,8 @@ class TestReviewRequest(ActorFields):
 
 
 class TestReviewItem(ContractModel):
+    __test__ = False
+
     test_id: UUID
     tc_code: TestCode
     previous_status: TestStatus
@@ -1053,12 +1074,16 @@ class TestReviewItem(ContractModel):
 
 
 class TestReviewRefusal(ContractModel):
+    __test__ = False
+
     test_id: UUID
     code: ErrorCode
     message: str
 
 
 class TestReviewResponse(ContractModel):
+    __test__ = False
+
     decision: ReviewDecision
     reviewed: list[TestReviewItem]
     refused: list[TestReviewRefusal]
@@ -1186,6 +1211,7 @@ class ChangeImpactResponse(ContractModel):
     counts: dict[ImpactClass, int]
     rerun_test_ids: list[UUID]
     created_at: datetime
+    warnings: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,16 @@
 # Quality-engine integration proposal for Member 1
 
+## Status: integrated behind one protocol (backend Milestones 6-7)
+
+There is **one** Quality Engine. The backend depends only on `app/engine/protocol.py` (`QualityEngine`); `QualityEngineImpl` in `app/engine/quality_engine.py` is the single implementation and **wraps Member 2's modules instead of duplicating them**: `oracle.calculate_span` / `deduct_meal` (reused), `validator.validate_cases` (all of V01-V12), `defect_clustering.cluster_failures`, `grounding.grounded` (through `interface.check_spec`) and the allowlisted `runner.executor.execute_cases`. Two things Member 2's modules could not do were added as backward-compatible options, not rewrites:
+
+* **Spec-driven oracle.** `oracle.calculate` accepts only a 480-minute threshold (and always deducts the whole meal). `make_oracle(threshold, min_qualifying)` computes the same values for 480/0 (cross-checked over a grid, including rejections, in `test_quality_engine_impl.py`) and supports the threshold and meal minimum of the approved spec (450 gives 60 overtime minutes for 22:00-07:00 with a 30-minute meal).
+* **Smallest teammate-file changes:** `validator.validate_cases(..., oracle=calculate)` and `executor.execute_cases(..., allowed_target=TARGET, oracle=calculate)` take the oracle and allowlisted target from the caller; `executor` imports the oracle relatively (the absolute `backend.app...` import failed when the API ran from `backend/`) and accepts mock version `1.5.0`. Defaults keep the previous behaviour.
+
+Decisions: the AI never sets expected values; test designs for threshold 480 equal Member 2's `generate_cases` (cross-check test); policy dates for tests are evaluated on or after the latest `effective_from` of the attached policies; V04 at spec level blocks only expired policies. The test-case validator keeps its own stricter V04 and takes the evaluation date from the caller.
+
+## Original proposal (historical)
+
 These are proposed shapes, **not finalized shared Pydantic contracts or routes**. The engine deliberately returns plain dictionaries and does not define shared models. The PDF lists similar MVP entities but leaves field names and ownership open. Keep `backend/app/core/contracts.py`, database models and backend routes under Member 1's ownership.
 
 ## Exact callable functions

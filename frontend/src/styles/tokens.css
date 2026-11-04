@@ -1,0 +1,132 @@
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --canvas: #0b0d10;
+  --surface: #111418;
+  --raised: #171b21;
+  --well: #1d222a;
+  --line: #232932;
+  --line-strong: #2f3743;
+  --fg: #e7eaee;
+  --fg-2: #a3acb9;
+  --fg-3: #6b7482;
+  --accent: #7c6cf6;
+  --accent-hover: #8f81ff;
+  --accent-fg: #ffffff;
+  --ok: #3fb68b;
+  --warn: #e0a43a;
+  --bad: #e5534b;
+  --info: #4c9aff;
+  --prov-ai: #a78bfa;
+  --prov-oracle: #2ec4b6;
+  --prov-human: #d6c29a;
+  --float-shadow: 0 8px 30px rgb(0 0 0 / 0.45);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --canvas: #f7f8fa;
+  --surface: #ffffff;
+  --raised: #f1f3f6;
+  --well: #eef0f4;
+  --line: #e3e6eb;
+  --line-strong: #cdd2da;
+  --fg: #15181d;
+  --fg-2: #4b5563;
+  --fg-3: #8a93a0;
+  --accent: #5b4bdb;
+  --accent-hover: #4b3cc4;
+  --accent-fg: #ffffff;
+  --ok: #1e8e61;
+  --warn: #b7791f;
+  --bad: #c93a32;
+  --info: #2f6fdb;
+  --prov-ai: #7c3aed;
+  --prov-oracle: #0f9488;
+  --prov-human: #8a6d3b;
+  --float-shadow: 0 8px 30px rgb(15 23 42 / 0.14);
+}
+
+@theme inline {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-well: var(--well);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-info: var(--info);
+  --color-prov-ai: var(--prov-ai);
+  --color-prov-oracle: var(--prov-oracle);
+  --color-prov-human: var(--prov-human);
+  --shadow-float: var(--float-shadow);
+
+  --text-xs: 0.6875rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.375rem;
+  --text-lg: 1rem;
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 2rem;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    background: var(--canvas);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+}
+
+@keyframes sg-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes sg-slide {
+  from { transform: translateX(16px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes sg-pop {
+  from { transform: translateY(4px) scale(0.98); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.anim-fade { animation: sg-fade 0.12s ease-out; }
+.anim-slide { animation: sg-slide 0.16s ease-out; }
+.anim-pop { animation: sg-pop 0.12s ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-fade, .anim-slide, .anim-pop { animation: none; }
+  * { transition-duration: 0s !important; }
+}

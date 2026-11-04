@@ -29,6 +29,7 @@ from app.core.contracts import (
 from app.core.dependencies import get_ai
 from app.core.errors import AIOutputInvalidError, AIProviderError
 from app.database.session import SessionLocal
+from app.engine.interface import check_spec
 from app.models import AuditEvent, LlmCall, RequirementVersion, Review
 from app.services.integration_service import get_spec_checker
 
@@ -42,30 +43,6 @@ BA = {"actor": "asha.ba", "actor_role": "BUSINESS_ANALYST"}
 
 
 # --- Test doubles ------------------------------------------------------------------
-
-
-def _normalise(text: str) -> str:
-    return " ".join(text.split()).lower()
-
-
-def reference_checker(
-    extraction: RequirementExtraction, requirement_text: str, policies: Sequence[PolicyResponse]
-) -> list[ValidationIssue]:
-    """Test-only stand-in for Member 2's grounding check (V02)."""
-    haystacks = [_normalise(requirement_text), *(_normalise(p.rule_text) for p in policies)]
-    issues: list[ValidationIssue] = []
-    for rule in extraction.rules:
-        if not any(_normalise(rule.source_span) in haystack for haystack in haystacks):
-            issues.append(
-                ValidationIssue(
-                    code=ValidationCode.V02_UNGROUNDED_SPAN,
-                    severity=IssueSeverity.BLOCK,
-                    message=f"Source span of {rule.rule_key} was not found in the sources.",
-                    field_path=f"rules.{rule.rule_key}.source_span",
-                    detail={"rule_key": rule.rule_key},
-                )
-            )
-    return issues
 
 
 class StubAI:
@@ -109,7 +86,7 @@ class FailingAI:
 
 @pytest.fixture()
 def api(client: TestClient) -> TestClient:
-    client.app.dependency_overrides[get_spec_checker] = lambda: reference_checker  # type: ignore[attr-defined]
+    client.app.dependency_overrides[get_spec_checker] = lambda: check_spec  # type: ignore[attr-defined]
     return client
 
 
