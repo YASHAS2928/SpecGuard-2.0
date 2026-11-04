@@ -110,7 +110,7 @@ try {
   }
   $env:DATABASE_URL = 'sqlite:///' + ($Db -replace '\\', '/')
   $env:MOCK_API_BASE_URL = "http://127.0.0.1:$MockPort"
-  $env:CORS_ORIGINS = 'http://localhost:5173,http://127.0.0.1:5173'
+  $env:CORS_ORIGINS = 'http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174'
   $backend = Start-Server 'backend' @('-m', 'uvicorn', 'app.main:app', '--host', '127.0.0.1', '--port', "$BackendPort") (Join-Path $Root 'backend')
 
   # --- Wait for readiness -------------------------------------------------------------------------------------

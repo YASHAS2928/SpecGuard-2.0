@@ -6,7 +6,10 @@ from fastapi.testclient import TestClient
 from mock_api.main import app as mock_app
 
 
-@pytest.mark.parametrize("origin", ["http://127.0.0.1:5173", "http://localhost:5173"])
+@pytest.mark.parametrize("origin", [
+    "http://127.0.0.1:5173", "http://localhost:5173",
+    "http://127.0.0.1:5174", "http://localhost:5174",
+])
 def test_admin_version_preflight_allows_frontend_origins(origin: str) -> None:
     with TestClient(mock_app) as client:
         response = client.options(
