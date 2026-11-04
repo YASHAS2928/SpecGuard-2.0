@@ -128,7 +128,14 @@ beforeEach(() => {
   vi.mocked(listAuditEvents).mockResolvedValue({ items: [], total: 0, limit: 20, offset: 0 })
 })
 
-describe('Batch 1 requirement and clarification workflows', () => {
+describe('Requirement and clarification workflows', () => {
+  it('sets the document title for the current route', async () => {
+    renderApp('/audit')
+
+    await screen.findByRole('heading', { name: 'Audit history', level: 1 })
+    expect(document.title).toBe('Audit history - SpecGuard')
+  })
+
   it('creates a requirement from the workspace list', async () => {
     const user = userEvent.setup()
     vi.mocked(api.listRequirements).mockResolvedValueOnce([]).mockResolvedValue([requirement])
@@ -172,6 +179,14 @@ describe('Batch 1 requirement and clarification workflows', () => {
     ))
   })
 
+  it('disables analysis and specification approval for the DEVELOPER role', async () => {
+    localStorage.setItem('specguard.actor', JSON.stringify({ actor: 'dev.user', actor_role: 'DEVELOPER' }))
+    renderWorkspace()
+
+    expect(await screen.findByRole('button', { name: 'Re-analyse' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Approve specification' })).toBeDisabled()
+  })
+
   it('confirms a clarification choice and updates ClarificationPage', async () => {
     const user = userEvent.setup()
     vi.mocked(api.resolveAmbiguity).mockResolvedValue(resolvedSpec)
@@ -210,6 +225,15 @@ describe('Batch 1 requirement and clarification workflows', () => {
     ))
   })
 
+  it('disables clarification decisions and approval for the DEVELOPER role', async () => {
+    localStorage.setItem('specguard.actor', JSON.stringify({ actor: 'dev.user', actor_role: 'DEVELOPER' }))
+    renderClarification()
+
+    expect((await screen.findAllByRole('button', { name: 'Choose' }))[0]).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Defer' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Approve specification' })).toBeDisabled()
+  })
+
   it('shows backend approval blockers and keeps the trace ID', async () => {
     const user = userEvent.setup()
     vi.mocked(api.approveSpec).mockRejectedValue(new ApiError(
@@ -227,24 +251,11 @@ describe('Batch 1 requirement and clarification workflows', () => {
     expect(screen.getByText('SPEC_NOT_APPROVABLE · trace approval-trace')).toBeInTheDocument()
   })
 
-  it('shows a 403 and trace ID for the DEVELOPER role', async () => {
-    const user = userEvent.setup()
+  it('disables specification approval for the DEVELOPER role', async () => {
     localStorage.setItem('specguard.actor', JSON.stringify({ actor: 'dev.user', actor_role: 'DEVELOPER' }))
-    vi.mocked(api.approveSpec).mockRejectedValue(new ApiError(
-      403,
-      'FORBIDDEN',
-      'Role cannot approve specifications',
-      null,
-      'role-trace',
-    ))
     renderApprovalDialog()
     const dialog = screen.getByRole('dialog', { name: 'Approve specification v1' })
-    await user.click(within(dialog).getByRole('button', { name: 'Approve specification' }))
-
-    expect(await screen.findByText('FORBIDDEN · trace role-trace')).toBeInTheDocument()
-    expect(api.approveSpec).toHaveBeenCalledWith(spec.id, '', {
-      actor: 'dev.user',
-      actor_role: 'DEVELOPER',
-    })
+    expect(within(dialog).getByRole('button', { name: 'Approve specification' })).toBeDisabled()
+    expect(api.approveSpec).not.toHaveBeenCalled()
   })
 })

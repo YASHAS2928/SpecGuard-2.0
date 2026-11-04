@@ -4,6 +4,7 @@ import { api, toApiError } from '../../api/client'
 import type { ApiError } from '../../api/client'
 import type { Spec } from '../../api/types'
 import { useSession } from '../../app/session'
+import { canEditSpec } from './SpecParts'
 import { Button, Dialog, ErrorState, Field, inputClass, useToast } from '../ui'
 import { Blockers } from './SpecParts'
 
@@ -19,6 +20,7 @@ export function ApproveSpecDialog({
   onApproved: (spec: Spec) => void
 }) {
   const { actor } = useSession()
+  const canApprove = canEditSpec(actor.actor_role)
   const toast = useToast()
   const [comment, setComment] = useState('')
   const [busy, setBusy] = useState(false)
@@ -62,7 +64,7 @@ export function ApproveSpecDialog({
       footer={
         <>
           <Button onClick={close}>Cancel</Button>
-          <Button variant="primary" onClick={approve} disabled={busy || !ready}>
+          <Button variant="primary" onClick={approve} disabled={!canApprove || busy || !ready}>
             {busy ? 'Approving…' : 'Approve specification'}
           </Button>
         </>

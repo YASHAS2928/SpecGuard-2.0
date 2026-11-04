@@ -17,11 +17,12 @@ Browser-supplied approval flags must never be passed through.
 
 ## Frontend Part 1
 
-The React/TypeScript Vite frontend uses Tailwind, with no router or component
-library. It supports creating requirements and immutable versions, choosing
-policy versions, analysis, reading specs, resolving/defering ambiguities, and
-approval with explicit blockers and trace IDs. Tests/Review, Run/Defects, Change
-Impact, Overview, and Audit screens are not implemented yet.
+The React/TypeScript Vite frontend uses React Router and Tailwind. It includes
+Overview, Requirements, Clarification, Test review, Execution & defects, Change
+impact, and Audit history screens. The UI supports immutable requirement
+versions, policy selection, analysis, ambiguity resolution, approval with
+blockers, test generation and review, controlled runs against the mock, impact
+analysis, and the audit trail.
 
 All data is fictional. Actor/role selection is an MVP convenience, **not
 authentication**. The actor is stored in this origin's browser local storage;
@@ -178,28 +179,29 @@ python -m scripts.check_ai_provider --live     # one RQ-014 extraction; prints s
 
 ## Demo script (about 10 minutes)
 
-Frontend Part 1 covers steps 1-4. Part 2 screens are not built yet, so steps 5-9 use the API docs at
-`http://127.0.0.1:8000/docs` (or `python -m scripts.e2e_live`, which runs all of it and prints one line per step).
-The numbers below were measured in live runs with the fake provider and mock 1.3.0 started by `run_demo.ps1`.
+Use the seeded synthetic requirement, configured fake provider, and selected
+mock version. Generated AI edge cases can vary with a different provider.
 
-1. Open the UI as **Asha (Business Analyst)**; RQ-014 is already listed (version 1, three policy versions attached).
-2. Click **Analyse**: the specification has 4 grounded rules (`SHIFT_SPAN`, `MEAL_DEDUCTION`, `OT_THRESHOLD`,
-   `END_BEFORE_START`) and one ambiguity: "If the recorded meal break is shorter than 30 minutes, is it deducted?"
-3. Resolve it (option 1: deduct only breaks of 30 minutes or more) and **Approve**. Approval is refused while any rule is
-   ungrounded or any ambiguity is open.
-4. As **Developer**, try to approve: `403 FORBIDDEN`.
-5. `POST /specs/{spec_id}/design-tests`: 17 tests: 14 engine tests (`DRAFT`) and 3 AI edge cases (1 `DRAFT`, 2 `BLOCKED` by
-   validation). Calling it again adds nothing (`added: 0`, `ai_edge_cases: "already_present"`).
-6. `POST /tests/review` as **QA Engineer**: approving a blocked test is refused per test (`TEST_NOT_APPROVABLE`, naming the
-   failed checks); approving the 14 engine tests succeeds. A Developer receives `403`.
-7. `POST /runs` against the mock. Switching the mock with `POST :9000/admin/version` gives these failing tests:
-   1.3.0 -> TC-005/007/008; 1.3.0-b -> TC-002/003/008; 1.3.0-c -> TC-005/006/008; 1.4.0 -> none (14/14). Each failure is
-   clustered into a defect; defects become `FIXED` after the green run and `VERIFIED` after a second one.
-8. Add RQ-014 version 2 (policy `POL-OT-01@v2`, threshold 450), analyse, resolve and approve it, then
-   `POST /specs/{new_spec_id}/impact` with `from_spec_id`. Counts: 2 STALE_EXPECTED, 4 OBSOLETE, 3 NEW, 11 UNAFFECTED when
-   `design-tests` was run on the new specification first. Calling impact first gives 2/5/3/10 plus two warnings. Run the new
-   tests on 1.4.0 (drift: TC-003/008 fail) and on 1.5.0 (14/14 pass).
-9. `GET /metrics/overview` and `GET /audit`: counts and the hash-chained trail of every step above.
+1. Open the UI as **Asha (Business Analyst)** and select the seeded RQ-014.
+2. In Requirements, analyse the version. In Clarification, choose “deduct only
+   breaks of 30 minutes or more,” then approve the specification.
+3. In Test review, generate tests with AI. Review the engine-generated tests
+   and approve them; inspect blocked AI cases and their validation refusals.
+4. In Execution & defects, run approved tests against mock 1.3.0. Open a
+   failing result, inspect its evidence, and use the defect action to filter
+   failing tests. Switch to 1.4.0 and run twice to observe defect resolution.
+5. In Requirements, create a new RQ-014 version with `POL-OT-01@v2`, analyse
+   and clarify it, then approve the new specification and generate its tests.
+6. In Change impact, analyse the new spec against its previous version, review
+   changed rules and impacted tests, then return to Test review to approve
+   stale/new tests.
+7. Run the recommended tests on mock 1.4.0 to observe drift, switch to 1.5.0,
+   and rerun to verify the updated policy behavior.
+8. Open Audit history to inspect event filters, pagination, entity links,
+   hashes, and trace IDs. Overview summarizes counts and recent run outcomes.
+
+The API docs at `http://127.0.0.1:8000/docs` and
+`python -m scripts.e2e_live` remain available for API-level verification.
 
 If the UI or mock gets into an odd state, run `reset_demo.ps1` and start again.
 

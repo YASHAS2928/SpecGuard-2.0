@@ -28,6 +28,7 @@ vi.mock('../../api/mock', () => ({
   MOCK_VERSIONS: [
     { id: '1.3.0', label: '1.3.0' },
     { id: '1.4.0', label: '1.4.0' },
+    { id: '1.5.0', label: '1.5.0' },
   ],
   getMockVersion: vi.fn(),
   setMockVersion: vi.fn(),
@@ -47,6 +48,7 @@ vi.mock('../../api/tests', async (importOriginal) => {
 })
 
 const approvedSpec = { ...spec, status: 'APPROVED' as const }
+let currentMockVersion = '1.3.0'
 
 function makeTest(overrides: Partial<TestRecord> & Pick<TestRecord, 'id' | 'tc_code'>): TestRecord {
   return {
@@ -142,6 +144,7 @@ function renderPage(path = `/runs/${spec.id}`) {
 beforeEach(() => {
   vi.resetAllMocks()
   localStorage.clear()
+  currentMockVersion = '1.3.0'
   vi.mocked(loadSpecIndex).mockResolvedValue([{ requirement, version: requirement.versions[0]!, spec: approvedSpec }])
   vi.mocked(api.getSpec).mockResolvedValue(approvedSpec)
   vi.mocked(listSpecTests).mockResolvedValue([
@@ -150,11 +153,18 @@ beforeEach(() => {
   ])
   vi.mocked(listDefects).mockResolvedValue([makeDefect()])
   vi.mocked(loadRunHistory).mockResolvedValue([makeRun()])
-  vi.mocked(getMockVersion).mockResolvedValue({ version: '1.3.0', meal_minimum: 30, available: ['1.3.0', '1.4.0'] })
-  vi.mocked(setMockVersion).mockResolvedValue({ version: '1.4.0', available: ['1.3.0', '1.4.0'] })
+  vi.mocked(getMockVersion).mockImplementation(async () => ({
+    version: currentMockVersion,
+    meal_minimum: 30,
+    available: ['1.3.0', '1.4.0', '1.5.0'],
+  }))
+  vi.mocked(setMockVersion).mockImplementation(async (version) => {
+    currentMockVersion = version
+    return { version, available: ['1.3.0', '1.4.0', '1.5.0'] }
+  })
 })
 
-describe('Batch 3 run and defect UI', () => {
+describe('Run and defect UI', () => {
   it('renders segmented bars and sparklines with populated and empty data', () => {
     const { rerender } = render(<SegmentedBar label="Run result" segments={[
       { label: 'passed', value: 2, className: 'bg-ok' },
@@ -212,6 +222,21 @@ describe('Batch 3 run and defect UI', () => {
     expect(within(row).getByText('30 overtime minutes')).toHaveClass('text-bad')
   })
 
+  it('labels AI-origin tests in run results', () => {
+    const aiTest = makeTest({ id: 'ai-test', tc_code: 'TC-AI', origin: 'AI' })
+    render(
+      <RunTable
+        results={[makeResult({ id: 'ai-result', test_case_id: aiTest.id, tc_code: aiTest.tc_code })]}
+        testsById={new Map([[aiTest.id, aiTest]])}
+        onOpen={vi.fn()}
+      />,
+    )
+
+    const row = screen.getByRole('row', { name: /TC-AI/ })
+    expect(within(row).getByText('AI')).toBeInTheDocument()
+    expect(within(row).getAllByText('60 overtime minutes')).toHaveLength(2)
+  })
+
   it('requires confirmation before running and filters the table to a defect', async () => {
     const user = userEvent.setup()
     const run = makeRun()
@@ -219,6 +244,8 @@ describe('Batch 3 run and defect UI', () => {
     renderPage()
 
     await screen.findByRole('button', { name: 'TC-001' })
+    const mockLabel = await screen.findByText('Mock Time-to-Pay API')
+    await waitFor(() => expect(mockLabel.parentElement).toHaveTextContent('1.3.0'))
     await user.click(screen.getByRole('button', { name: 'Run approved tests' }))
     const dialog = screen.getByRole('dialog', { name: 'Run approved tests?' })
     expect(within(dialog).getByText(/2 approved test\(s\)/)).toBeInTheDocument()
@@ -232,6 +259,38 @@ describe('Batch 3 run and defect UI', () => {
     expect(screen.queryByRole('button', { name: 'TC-001' })).not.toBeInTheDocument()
   })
 
+  it('disables run execution for the DEVELOPER role', async () => {
+    localStorage.setItem('specguard.actor', JSON.stringify({ actor: 'dev.user', actor_role: 'DEVELOPER' }))
+    renderPage()
+
+    expect(await screen.findByRole('button', { name: 'Run approved tests' })).toBeDisabled()
+  })
+
+  it('shows the selected mock version in the run confirmation', async () => {
+    const user = userEvent.setup()
+    currentMockVersion = '1.4.0'
+    renderPage()
+
+    await screen.findByRole('button', { name: 'TC-001' })
+    const mockLabel = await screen.findByText('Mock Time-to-Pay API')
+    await waitFor(() => expect(mockLabel.parentElement).toHaveTextContent('1.4.0'))
+    await user.click(screen.getByRole('button', { name: 'Run approved tests' }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Run approved tests?' })
+    expect(dialog.textContent).toContain('mock 1.4.0')
+  })
+
+  it('keeps both run columns shrinkable and constrains wide tables to their scroll panel', async () => {
+    renderPage()
+
+    await screen.findByRole('heading', { name: 'System under test' })
+    const sidePanel = screen.getByRole('heading', { name: 'System under test' }).closest('section')
+    const grid = sidePanel?.parentElement?.parentElement
+    expect(grid?.children[0]).toHaveClass('min-w-0')
+    expect(grid?.children[1]).toHaveClass('min-w-0')
+    expect(screen.getByRole('table').parentElement).toHaveClass('min-w-0', 'max-w-full', 'overflow-x-auto')
+  })
+
   it('switches mock versions and shows an explicit error when the mock is unreachable', async () => {
     const user = userEvent.setup()
     const onChanged = vi.fn()
@@ -242,12 +301,16 @@ describe('Batch 3 run and defect UI', () => {
       </ToastProvider>,
     )
     await screen.findByText('Mock Time-to-Pay API')
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Mock API version' }), '1.4.0')
-    await user.click(screen.getByRole('button', { name: 'Switch' }))
-    await waitFor(() => expect(setMockVersion).toHaveBeenCalledWith('1.4.0'))
-    expect(onChanged).toHaveBeenCalledWith('1.4.0')
+    for (const version of ['1.4.0', '1.5.0']) {
+      await user.selectOptions(screen.getByRole('combobox', { name: 'Mock API version' }), version)
+      await user.click(screen.getByRole('button', { name: 'Switch' }))
+      await waitFor(() => expect(setMockVersion).toHaveBeenCalledWith(version))
+      await waitFor(() => expect(onChanged).toHaveBeenCalledWith(version))
+      expect(screen.getByText('Mock Time-to-Pay API').parentElement).toHaveTextContent(version)
+    }
     unmount()
 
+    currentMockVersion = '1.3.0'
     vi.mocked(setMockVersion).mockRejectedValueOnce(new Error('Cannot reach the mock API'))
     render(
       <ToastProvider>

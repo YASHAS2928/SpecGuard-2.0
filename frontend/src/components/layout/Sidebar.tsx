@@ -76,11 +76,6 @@ export function Sidebar({
                           className={active ? 'text-accent' : 'text-fg-3'}
                         />
                         <span className={`min-w-0 flex-1 truncate ${hide}`}>{item.label}</span>
-                        {item.soon && (
-                          <span className={`rounded bg-well px-1 text-[10px] text-fg-3 ${hide}`}>
-                            {item.soon}
-                          </span>
-                        )}
                       </Link>
                     </li>
                   )
@@ -103,8 +98,8 @@ export function Sidebar({
             <span className={`truncate ${hide}`}>
               {ai
                 ? ai.provider === 'fake'
-                  ? 'AI: fake (no LLM)'
-                  : `AI: ${ai.provider}${ai.configured ? '' : ' (not set up)'}`
+                  ? 'AI: fake (no language model used)'
+                  : `AI: ${ai.provider} · ${ai.model ?? 'model unavailable'}${ai.configured ? '' : ' (not set up)'}`
                 : health.error
                   ? 'Backend unreachable'
                   : 'Checking backend…'}

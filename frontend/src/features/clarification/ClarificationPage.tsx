@@ -3,7 +3,9 @@ import { useEffect, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { api } from '../../api/client'
 import { loadSpecIndex } from '../../api/adapters'
+import { useSession } from '../../app/session'
 import { useWorkspace } from '../../app/workspace'
+import { canEditSpec } from '../../components/domain/SpecParts'
 import { ApproveSpecDialog } from '../../components/domain/ApproveSpecDialog'
 import {
   Button,
@@ -62,12 +64,14 @@ function SpecPicker() {
 }
 
 function ClarificationBoard({ specId }: { specId: string }) {
+  const { actor } = useSession()
   const { setActive } = useWorkspace()
   const spec = useLoad(() => api.getSpec(specId), `spec:${specId}`)
   const index = useLoad(() => loadSpecIndex(), 'spec-index')
   const [filter, setFilter] = useState('todo')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [approveOpen, setApproveOpen] = useState(false)
+  const canEdit = canEditSpec(actor.actor_role)
 
   const owner = index.data?.find((item) => item.spec.id === specId)
   const ownerRequirementId = owner?.requirement.id
@@ -132,7 +136,7 @@ function ClarificationBoard({ specId }: { specId: string }) {
             </Link>
           )}
           {data.status === 'DRAFT' && (
-            <Button variant="primary" onClick={() => setApproveOpen(true)}>
+            <Button variant="primary" disabled={!canEdit} onClick={() => setApproveOpen(true)}>
               Approve specification
             </Button>
           )}

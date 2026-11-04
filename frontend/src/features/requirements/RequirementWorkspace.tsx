@@ -3,9 +3,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../../api/client'
 import type { AnalysisMetadata, AnalyzeResponse, Policy, Requirement, Spec } from '../../api/types'
+import { useSession } from '../../app/session'
 import { useWorkspace } from '../../app/workspace'
 import { AnalysisBanner } from '../../components/domain/AnalysisBanner'
 import { ApproveSpecDialog } from '../../components/domain/ApproveSpecDialog'
+import { canEditSpec } from '../../components/domain/SpecParts'
 import {
   Button,
   EmptyState,
@@ -49,7 +51,9 @@ export function RequirementWorkspace({
   policies: Policy[]
   onChanged: () => void
 }) {
+  const { actor } = useSession()
   const { setActive } = useWorkspace()
+  const canEdit = canEditSpec(actor.actor_role)
   const versions = requirement.versions
   const latest = versions[versions.length - 1]
   const [versionId, setVersionId] = useState(latest?.id ?? '')
@@ -195,12 +199,12 @@ export function RequirementWorkspace({
             <FilePlus size={14} aria-hidden="true" />
             New version
           </Button>
-          <Button onClick={() => setDialog('analyse')} variant={spec ? 'secondary' : 'primary'}>
+          <Button disabled={!canEdit} onClick={() => setDialog('analyse')} variant={spec ? 'secondary' : 'primary'}>
             <Sparkles size={14} aria-hidden="true" />
             {spec ? 'Re-analyse' : 'Analyse'}
           </Button>
           {spec && spec.status === 'DRAFT' && (
-            <Button variant="primary" onClick={() => setDialog('approve')}>
+            <Button variant="primary" disabled={!canEdit} onClick={() => setDialog('approve')}>
               Approve specification
             </Button>
           )}
@@ -332,7 +336,7 @@ export function RequirementWorkspace({
               <Link to={`/clarification/${spec.id}`} className="text-accent underline">
                 Clarification
               </Link>
-              . Tests that cover these rules appear in Test review (next batch).
+              . Tests that cover these rules appear in Test review.
             </p>
           )}
         </div>

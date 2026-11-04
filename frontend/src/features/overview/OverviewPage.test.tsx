@@ -48,7 +48,7 @@ beforeEach(() => {
   vi.mocked(loadRunHistory).mockResolvedValue([])
 })
 
-describe('Batch 3 overview', () => {
+describe('Overview', () => {
   it('shows n/a when there is no last run', async () => {
     renderPage()
 

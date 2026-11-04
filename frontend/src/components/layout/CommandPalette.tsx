@@ -142,7 +142,7 @@ export function CommandPalette({
           }}
           onKeyDown={onKeyDown}
           placeholder="Type a command or page name…"
-          className="w-full border-b border-line bg-transparent px-4 py-3 text-base text-fg placeholder:text-fg-3 focus:outline-none"
+          className="w-full border-b border-line bg-transparent px-4 py-3 text-base text-fg placeholder:text-fg-3 focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2"
         />
         <ul id="command-list" role="listbox" className="max-h-80 overflow-y-auto p-1">
           {results.length === 0 && <li className="px-3 py-6 text-center text-sm text-fg-3">No matching command</li>}

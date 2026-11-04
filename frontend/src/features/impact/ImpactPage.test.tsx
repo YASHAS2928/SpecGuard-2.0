@@ -177,11 +177,42 @@ describe('ImpactPage', () => {
     expect(await screen.findByText('No approved specification to compare')).toBeInTheDocument()
   })
 
+  it('shows empty comparison guidance when this requirement has only one specification', async () => {
+    vi.mocked(loadRequirementSpecs).mockResolvedValue([
+      { version: newVersion, spec: approvedSpec },
+    ])
+    renderImpact()
+
+    expect(await screen.findByText(/There is no earlier approved specification of this requirement/)).toBeInTheDocument()
+  })
+
+  it('disables impact analysis for the DEVELOPER role', async () => {
+    localStorage.setItem('specguard.actor', JSON.stringify({ actor: 'dev.user', actor_role: 'DEVELOPER' }))
+    renderImpact()
+
+    expect(await screen.findByRole('button', { name: 'Analyse impact' })).toBeDisabled()
+  })
+
   it('surfaces a specification load error with its trace ID', async () => {
     vi.mocked(api.getSpec).mockRejectedValue(new ApiError(503, 'DEMO_ERROR', 'Demo unavailable', null, 'trace-123'))
     renderImpact()
     const alert = await screen.findByRole('alert')
     expect(within(alert).getByText(/Demo unavailable/)).toBeInTheDocument()
     expect(within(alert).getByText(/trace trace-123/)).toBeInTheDocument()
+  })
+
+  it('explains an already-analysed pair and points to a new requirement version', async () => {
+    const user = userEvent.setup()
+    vi.mocked(analyzeImpact).mockRejectedValueOnce(
+      new ApiError(409, 'CONFLICT', 'Change impact was already analysed for these specifications.', null, 'trace-409'),
+    )
+    renderImpact()
+
+    await user.click(await screen.findByRole('button', { name: 'Analyse impact' }))
+
+    const notice = await screen.findByText('This specification pair has already been analysed')
+    expect(notice.parentElement).toHaveTextContent('Create a new requirement version')
+    expect(screen.getByRole('link', { name: /Create a new requirement version/ })).toHaveAttribute('href', '/requirements')
+    expect(screen.queryByText('Change impact was already analysed for these specifications.')).not.toBeInTheDocument()
   })
 })

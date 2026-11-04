@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import { CommandPalette } from './CommandPalette'
 import { Sidebar } from './Sidebar'
 import { TopBar } from './TopBar'
+import { NAV_ITEMS, isActivePath } from './nav'
 
 const KEY = 'specguard.sidebar'
 
@@ -15,9 +16,15 @@ function readCollapsed(): boolean {
 }
 
 export function AppShell() {
+  const { pathname } = useLocation()
   const [collapsed, setCollapsed] = useState(readCollapsed)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+
+  useEffect(() => {
+    const current = NAV_ITEMS.find((item) => isActivePath(pathname, item))
+    document.title = current ? `${current.label} - SpecGuard` : 'SpecGuard'
+  }, [pathname])
 
   useEffect(() => {
     try {
