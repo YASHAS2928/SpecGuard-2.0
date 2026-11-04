@@ -63,7 +63,7 @@ export function toApiError(error: unknown): ApiError {
   return new ApiError(0, 'UNKNOWN_ERROR', message, null, null)
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+export async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   let response: Response
   try {
     response = await fetch(`${BASE}${path}`, {

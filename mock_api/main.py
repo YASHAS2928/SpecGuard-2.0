@@ -3,11 +3,19 @@
 import os
 import re
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, StrictBool, StrictInt, field_validator
 
 from .calculator import VERSIONS, calculate, meal_minimum
 
 app = FastAPI(title="Synthetic Time-to-Pay API")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type"],
+    allow_credentials=False,
+)
 TIME_PATTERN = re.compile(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]\Z")
 LOOPBACK_CLIENTS = {"127.0.0.1", "::1", "localhost", "testclient"}
 _selected_version: str | None = None  # set by POST /admin/version; overrides MOCK_VERSION
