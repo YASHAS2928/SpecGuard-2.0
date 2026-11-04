@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.api import policies, requirements, specs
+from app.api import dashboard, impact, policies, requirements, runs, specs, tests
 from app.core.config import API_VERSION, APP_VERSION, Settings, get_settings
 from app.core.contracts import ErrorResponse
 from app.core.errors import TRACE_HEADER, register_exception_handlers
@@ -212,6 +212,12 @@ def create_app() -> FastAPI:
     app.include_router(specs.analysis_router)
     app.include_router(specs.ambiguity_router)
     app.include_router(specs.router)
+    app.include_router(tests.spec_tests_router)
+    app.include_router(tests.review_router)
+    app.include_router(runs.runs_router)
+    app.include_router(runs.defects_router)
+    app.include_router(impact.router)
+    app.include_router(dashboard.router)
 
     return app
 

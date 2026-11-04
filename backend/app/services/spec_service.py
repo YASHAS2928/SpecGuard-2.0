@@ -18,7 +18,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.ai.integration_interface import RequirementAI
@@ -856,6 +856,18 @@ def approve_spec(
     version = spec.requirement_version
     requirement = version.requirement
     before = spec_snapshot(spec)
+
+    # Claim the transition atomically: of two concurrent approvals only one UPDATE matches DRAFT.
+    claimed = db.execute(
+        update(Spec).where(Spec.id == spec.id, Spec.status == SpecStatus.DRAFT)
+        .values(status=SpecStatus.APPROVED)
+    ).rowcount
+    if claimed != 1:
+        db.rollback()
+        raise StateTransitionError(
+            "The specification was changed by another request and can no longer be approved.",
+            details={"spec_id": str(spec.id)},
+        )
 
     others = db.scalars(
         select(Spec)
