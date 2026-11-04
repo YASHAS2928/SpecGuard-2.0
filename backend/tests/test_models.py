@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import func, inspect, select, text
@@ -110,6 +110,32 @@ def test_primary_keys_are_uuids_stored_as_hex_text(db_session: Session) -> None:
     assert version.requirement_id == requirement.id
     stored = db_session.execute(text("SELECT id FROM requirements")).scalar_one()
     assert stored == requirement.id.hex
+
+
+@pytest.mark.parametrize(
+    "timestamp",
+    [
+        datetime(2026, 11, 4, 10, 0),
+        datetime(2026, 11, 4, 10, 0, tzinfo=timezone.utc),
+        datetime(2026, 11, 4, 15, 30, tzinfo=timezone(timedelta(hours=5, minutes=30))),
+    ],
+)
+def test_timestamps_are_stored_as_utc_and_loaded_with_utc_timezone(
+    db_session: Session, timestamp: datetime
+) -> None:
+    requirement = Requirement(
+        code="RQ-014", title="UTC timestamps", created_at=timestamp, updated_at=timestamp
+    )
+    db_session.add(requirement)
+    db_session.commit()
+    db_session.refresh(requirement)
+
+    expected = datetime(2026, 11, 4, 10, 0, tzinfo=timezone.utc)
+    for value in (requirement.created_at, requirement.updated_at):
+        assert value.tzinfo == timezone.utc
+        assert value == expected
+    stored = db_session.execute(text("SELECT created_at, updated_at FROM requirements")).one()
+    assert tuple(stored) == ("2026-11-04 10:00:00.000000",) * 2
 
 
 def test_foreign_keys_are_enforced(db_session: Session) -> None:
@@ -280,6 +306,14 @@ def _audit_event(db: Session) -> AuditEvent:
     db.add(event_row)
     db.commit()
     return event_row
+
+
+def test_inferred_datetime_columns_load_with_utc_timezone(db_session: Session) -> None:
+    event_row = _audit_event(db_session)
+    timestamp = event_row.ts
+    db_session.refresh(event_row)
+    assert event_row.ts.tzinfo == timezone.utc
+    assert event_row.ts == timestamp
 
 
 def test_audit_events_cannot_be_updated(db_session: Session) -> None:
