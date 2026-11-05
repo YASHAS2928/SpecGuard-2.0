@@ -22,9 +22,14 @@ The video demonstrates the requirement-to-test workflow, specification
 analysis, clarification, approval, test execution, defect detection, change
 impact, and audit results.
 
+## 📊 Project presentation
+
+**[▶ View the SpecGuard 2.0 presentation](https://docs.google.com/presentation/d/15Js5CTbexCLMgCGvbGwLWl-CnDLE9veF/edit?usp=drivesdk&ouid=105368313505115240667&rtpof=true&sd=true)**
+
 ## Quick links
 
 - [🎥 Watch the demo video](https://drive.google.com/file/d/1h627LxBznggYgJxozkzR_otC2l7-mVZe/view?usp=sharing)
+- [📊 View the project presentation](https://docs.google.com/presentation/d/15Js5CTbexCLMgCGvbGwLWl-CnDLE9veF/edit?usp=drivesdk&ouid=105368313505115240667&rtpof=true&sd=true)
 - [How the system works](#how-the-system-works)
 - [Architecture](#architecture)
 - [Run the complete demo](#run-the-complete-demo)
