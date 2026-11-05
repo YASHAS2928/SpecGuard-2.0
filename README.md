@@ -14,8 +14,17 @@ All requirements, policies, identities, and calculations in this repository
 are fictional. This is not a Dayforce integration or a production payroll
 engine.
 
+## 🎥 Demo video
+
+**[▶ Watch the SpecGuard 2.0 demo](https://drive.google.com/file/d/1h627LxBznggYgJxozkzR_otC2l7-mVZe/view?usp=sharing)**
+
+The video demonstrates the requirement-to-test workflow, specification
+analysis, clarification, approval, test execution, defect detection, change
+impact, and audit results.
+
 ## Quick links
 
+- [🎥 Watch the demo video](https://drive.google.com/file/d/1h627LxBznggYgJxozkzR_otC2l7-mVZe/view?usp=sharing)
 - [How the system works](#how-the-system-works)
 - [Architecture](#architecture)
 - [Run the complete demo](#run-the-complete-demo)
