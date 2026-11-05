@@ -1,229 +1,218 @@
-# SpecGuard 2.0 quality-engine prototype
+# SpecGuard 2.0
 
-Synthetic educational prototype for requirement RQ-014: one overnight shift, one unpaid meal, and overtime above 480 paid minutes per shift. The PDF blueprint is a conceptual reference; this repository does not claim Dayforce integration or actual Dayforce policy behavior.
+SpecGuard is a quality-engineering prototype that turns a business
+requirement into a traceable, reviewable, and executable test workflow.
 
-## What works
+The demonstration requirement, **RQ-014**, describes an overnight shift with
+an unpaid meal break and overtime after **480 paid minutes**. SpecGuard
+extracts testable rules, identifies ambiguities, generates boundary and
+negative tests, validates expected results independently, executes approved
+tests against a controlled service, clusters failures into defects, and
+reports change impact, drift, metrics, and audit history.
 
-The independent oracle calculates local-wall-clock shift span, paid minutes and overtime. The deterministic generator creates 13 draft cases. The validator checks schema, source spans, policy references and dates, rule and requirement links, oracle values, AI claims, duplicates, required coverage, suspicious instructions, and execution targets. The controlled runner requires an authoritative reviewed-case lookup, verifies the stored case and approval record against the submitted snapshot, checks oracle expectations again, and calls one loopback mock endpoint with redirects disabled. The mock provides three deliberate defects and one corrected version. Failure clustering uses observed `FAIL` results only.
+All requirements, policies, identities, and calculations in this repository
+are fictional. This is not a Dayforce integration or a production payroll
+engine.
 
-Backend milestones 1-5 now include UUID contracts, persistence, requirement
-versioning, policy seeds, audit events, AI interfaces, and the specification
-workflow. Frontend Part 1 provides Requirements and Specification/Clarification
-screens. See [API contracts](docs/API_CONTRACTS.md),
-[integration decisions](docs/quality-engine-integration.md), and
-[Phase 2 verification](docs/phase2-verification.md). The runner is an internal
-service: Member 1 must implement its review lookup against trusted storage.
-Browser-supplied approval flags must never be passed through.
+## Quick links
 
-## Frontend Part 1
+- [How the system works](#how-the-system-works)
+- [Architecture](#architecture)
+- [Run the complete demo](#run-the-complete-demo)
+- [Verify the project](#verify-the-project)
+- [API documentation](#api-documentation)
+- [AI providers](#ai-providers)
+- [Configuration](#configuration)
+- [Scope and limitations](#scope-and-limitations)
+- [API contracts](docs/API_CONTRACTS.md)
+- [Integration decisions](docs/quality-engine-integration.md)
+- [AI integration](docs/ai-integration.md)
+- [Phase 2 verification](docs/phase2-verification.md)
 
-The React/TypeScript Vite frontend uses React Router and Tailwind. It includes
-Overview, Requirements, Clarification, Test review, Execution & defects, Change
-impact, and Audit history screens. The UI supports immutable requirement
-versions, policy selection, analysis, ambiguity resolution, approval with
-blockers, test generation and review, controlled runs against the mock, impact
-analysis, and the audit trail.
+## How the system works
 
-All data is fictional. Actor/role selection is an MVP convenience, **not
-authentication**. The actor is stored in this origin's browser local storage;
-storage failures are displayed. Only the API base URL belongs in frontend
-configuration; never put API keys in `VITE_*` variables.
+1. A business analyst creates a requirement and associates approved policy
+   versions.
+2. The analysis layer produces a specification with grounded rules,
+   acceptance criteria, and explicit ambiguities.
+3. A reviewer resolves or defers ambiguities. Specifications cannot be
+   approved while required blockers remain.
+4. The quality engine generates deterministic engine tests and AI-assisted
+   edge-case candidates.
+5. Validation checks schemas, source references, policy links, expected
+   values, duplicate cases, coverage, and suspicious instructions.
+6. A QA engineer reviews the generated tests. Only trusted, approved cases
+   can be executed.
+7. The runner calculates expected results with an independent oracle, calls
+   the local mock service, records pass/fail results, and clusters observed
+   failures into defects.
+8. A new requirement or policy version can be compared with the previous
+   specification to classify stale, obsolete, new, and unaffected tests.
+9. Metrics and a hash-chained audit trail provide visibility into the complete
+   workflow.
 
-With an approved Node.js 22.12+ or 24 LTS installation, from `frontend`:
+## Architecture
+
+```text
+┌──────────────────────┐
+│ React + TypeScript UI│  Requirements, specs, reviews, runs, audit
+└──────────┬───────────┘
+           │ JSON over HTTP
+┌──────────▼───────────┐
+│ FastAPI backend       │  Workflow, roles, persistence, API contracts
+└──────┬─────────┬─────┘
+       │         │
+       │         └── AI adapter
+       │             fake provider for deterministic local evaluation
+       │
+       ├── Quality engine
+       │   oracle, generator, validator, runner, clustering, impact
+       │
+       ├── SQLite database
+       │   requirements, versions, specs, tests, runs, defects, audit
+       │
+       └── Loopback mock Time-to-Pay API
+           repeatable defective and corrected service versions
+```
+
+The frontend is a Vite application. The backend is a FastAPI application
+using SQLAlchemy and SQLite for local evaluation. The mock API is deliberately
+local and versioned as a **system under test**. It is not the product or a
+replacement for Dayforce; it gives the quality workflow a safe, repeatable
+target so the same approved test suite can demonstrate both defects and a
+corrected run.
+
+### Independent calculation model
+
+The oracle accepts 24-hour local `HH:MM` times, calculates shift span,
+deducts the supplied unpaid meal break once, and calculates overtime above the
+synthetic 480-minute threshold. It does not use mock responses or AI output to
+derive expected values. Invalid inputs, such as malformed times, invalid
+overnight flags, negative meals, or unsupported shift lengths, are rejected.
+
+## AI providers
+
+The AI layer uses a shared structured-output contract and does not silently
+fall back between providers. The selected provider is controlled by
+`AI_PROVIDER`:
+
+- `fake`: deterministic, offline RQ-014 evaluation; recommended for review.
+- `ollama`: local model through a loopback URL.
+- `groq`: hosted provider configured with `GROQ_API_KEY` and `GROQ_MODEL`.
+- `hosted_open_weight`: OpenAI-compatible HTTPS endpoint.
+
+AI output is schema-validated and retried according to configuration. The
+deterministic oracle remains the source of truth for expected test results.
+Provider errors and invalid output are surfaced explicitly. See
+[AI integration](docs/ai-integration.md) for provider requirements and data
+handling.
+
+## Run the complete demo
+
+### Prerequisites
+
+- Python 3.12 or newer
+- Node.js 22.12+ or 24 LTS
+- Windows PowerShell
+
+From the repository root, start the backend and mock API:
 
 ```powershell
+powershell -ExecutionPolicy Bypass -File scripts\run_demo.ps1
+```
+
+The script creates or reuses `.venv`, installs backend dependencies when
+needed, starts the backend at `http://127.0.0.1:8000`, starts the mock at
+`http://127.0.0.1:9000`, and seeds fictional RQ-014 data into a temporary
+SQLite database under `.tmp\demo`.
+
+In a second terminal, install and start the frontend:
+
+```powershell
+cd frontend
 npm ci
-npm run build
-npm test
-npm run lint
 npm run dev
 ```
 
-The UI is at `http://127.0.0.1:5173`. It connects to
-`http://localhost:8000` by default; override `VITE_API_BASE_URL` when starting
-Vite if needed (see [frontend/.env.example](frontend/.env.example)).
-Vite binds to loopback only. No global packages are required.
+Open the UI at `http://127.0.0.1:5173`. The backend's interactive API
+documentation is available at `http://127.0.0.1:8000/docs`.
 
-For the optional project-local portable Node distribution under `.tools`, run
-the tools directly without modifying PATH, from `frontend`:
+To run the full workflow over real loopback HTTP while the demo is running:
 
 ```powershell
-$nodeDir = (Get-ChildItem ..\.tools -Directory -Filter 'node-*-win-x64' | Select-Object -First 1).FullName
-$node = Join-Path $nodeDir 'node.exe'
-& $node node_modules\typescript\bin\tsc -b
-& $node node_modules\vite\bin\vite.js build
-& $node node_modules\vitest\vitest.mjs run
-& $node node_modules\eslint\bin\eslint.js .
-& $node node_modules\vite\bin\vite.js --host 127.0.0.1 --port 5173
+.\.venv\Scripts\python.exe -m scripts.e2e_live `
+  --backend http://127.0.0.1:8000 `
+  --mock http://127.0.0.1:9000
 ```
 
-Dependencies and build output are project-local; `.tools`, npm cache,
-`node_modules`, and `dist` are ignored by Git. The lockfile records dependency
-versions. Tests use synthetic fixtures and mocked API calls.
-
-For an offline backend without touching any existing database, use the existing
-project-local Python virtual environment, change to `backend`, and set the
-following **process-local** variables before starting Uvicorn:
+To stop the demo and remove only its temporary database:
 
 ```powershell
-$env:DATABASE_URL = 'sqlite://'
-$env:AI_PROVIDER = 'fake'
-$env:GROQ_API_KEY = ''
-$env:GEMINI_API_KEY = ''
-$env:CORS_ORIGINS = 'http://127.0.0.1:5173,http://localhost:5173'
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+powershell -ExecutionPolicy Bypass -File scripts\reset_demo.ps1
 ```
 
-Invoke `python` via the existing virtual environment's full executable path if
-it is not activated. In-memory data is lost when that process stops. The fake
-provider is a deterministic RQ-014 demo, not general requirement understanding.
-Until `app.engine.interface.check_spec` is present, rules stay unverified and
-approval intentionally returns `409 SPEC_NOT_APPROVABLE`. It is now present:
-analysis grounds every rule, so the full demo (create, analyse, resolve,
-approve) works offline. `DEVELOPER` cannot analyze, resolve, or approve
-and receives `403 FORBIDDEN`. No external AI calls are needed for Part 1.
+## Verify the project
 
-## Install and run (PowerShell, from repository root)
-
-```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
-$env:MOCK_VERSION = '1.3.0'
-.\.venv\Scripts\python.exe -m uvicorn mock_api.main:app --host 127.0.0.1 --port 9000
-```
-
-In another terminal, from the repository root:
+Run backend tests from the repository root:
 
 ```powershell
 $env:SPECGUARD_ENABLE_HTTP_TESTS = '1'
 .\.venv\Scripts\python.exe -m pytest backend\tests -q
 ```
 
-The tests also run with the standard library when pytest is unavailable. Set `SPECGUARD_ENABLE_HTTP_TESTS=1` on hosts with loopback socket access to include the in-process FastAPI test; otherwise that one test skips:
+Run frontend checks from `frontend`:
 
 ```powershell
-python -m unittest discover -s backend/tests -v
+npm run build
+npm test
+npm run lint
 ```
 
-For a concise offline demonstration of generation, validation, simulated review, execution, and clustering:
+For a concise offline quality-engine demonstration:
 
 ```powershell
-python -m scripts.demo_quality
+.\.venv\Scripts\python.exe -m scripts.demo_quality
 ```
 
-The script prints actual result JSON. Its in-memory approval is a labeled demo simulation; Member 1 must wire persisted human approval for the product flow.
+## API documentation
 
-With a live mock server running, this command uses the real HTTP runner. Its `--version` must match the server's `MOCK_VERSION`; `--case` can select `overnight_with_break`, `threshold_exact`, or `daytime_with_break`:
+With the backend running:
 
-```powershell
-python -m scripts.verify_live --version 1.4.0 --case threshold_exact
+- Swagger UI: `http://127.0.0.1:8000/docs`
+- OpenAPI JSON: `http://127.0.0.1:8000/openapi.json`
+- Health check: `http://127.0.0.1:8000/health`
+
+The mock calculation endpoint is:
+
+```text
+POST http://127.0.0.1:9000/v1/pay/calculate
 ```
 
-Set `MOCK_VERSION` to `1.3.0-b`, `1.3.0-c`, `1.4.0` or `1.5.0` and restart the server to change implementation, or switch at runtime with the loopback-only development endpoint `POST /admin/version` (`{"version": "1.5.0"}`; `GET` reads it, `DELETE` returns to `MOCK_VERSION`). Member 1 agreed to this mechanism for the backend run flow; it is not a request header or browser parameter. The fixed API route is `POST http://127.0.0.1:9000/v1/pay/calculate` with `start_time`, `end_time`, `overnight`, and `meal_break_minutes`. Successful JSON contains `paid_minutes` and `overtime_minutes`; invalid inputs return HTTP 422. Successful responses include `X-Mock-Version`.
-
-With the backend (`MOCK_API_BASE_URL` pointing at the mock) and the mock running on loopback ports, `python -m scripts.e2e_live --backend http://127.0.0.1:8000 --mock http://127.0.0.1:9000` runs the whole journey over real HTTP (requirement, specification, tests, runs on every mock version, defects, change impact, drift, metrics, audit) and exits non-zero if any step fails.
-
-Example:
-
-```powershell
-$body = @{ start_time='22:00'; end_time='07:00'; overnight=$true; meal_break_minutes=30 } | ConvertTo-Json
-Invoke-RestMethod -Uri 'http://127.0.0.1:9000/v1/pay/calculate' -Method Post -ContentType 'application/json' -Body $body
-```
-
-With `MOCK_VERSION=1.4.0`, this returns `paid_minutes=510`, `overtime_minutes=30`. With `1.3.0`, it returns `0` and `0`; the same approved `PAID_EQUALS` case fails. Those values are verified by the local tests; they are synthetic demonstration data.
-
-## One-command demo (Windows PowerShell, from the repository root)
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\run_demo.ps1     # mock 1.3.0 on :9000, backend on :8000, RQ-014 seeded
-cd frontend; npm run dev                                            # UI at http://127.0.0.1:5173
-powershell -ExecutionPolicy Bypass -File scripts\reset_demo.ps1   # stop servers, delete only the temporary demo database
-```
-
-`run_demo.ps1` uses a project-local virtual environment (`.venv`, or `-Python <path>`), installs backend
-requirements only if they are missing (`-SkipInstall` forbids that), and always uses a **temporary** SQLite file under
-`.tmp\demo`: any `-DatabasePath` outside `.tmp` is refused before anything starts, and the development database is never
-used. The AI provider is `fake` unless `AI_PROVIDER` is set in your environment or `backend\.env`. Ports are
-configurable (`-BackendPort`, `-MockPort`); an occupied port stops the script instead of killing anything. `reset_demo.ps1`
-stops only the uvicorn processes the demo recorded, deletes only `specguard-demo.db*` under `.tmp\demo`, resets the mock to
-1.3.0, and supports `-WhatIf`. `scripts\seed_demo.py` is idempotent and creates RQ-014 without analysing or approving it.
+It accepts `start_time`, `end_time`, `overnight`, and
+`meal_break_minutes`. Successful responses contain `paid_minutes` and
+`overtime_minutes`; invalid requests return HTTP 422.
 
 ## Configuration
 
-Copy `backend\.env.example` to `backend\.env` (never commit it). Process environment variables override the file.
+Copy `backend\.env.example` to `backend\.env` for local configuration. Never
+commit that file or place secrets in frontend `VITE_*` variables.
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `APP_NAME`, `APP_ENV`, `DEBUG` | `SpecGuard 2.0`, `development`, `true` | Application metadata; `DEBUG` never returns stack traces to clients. |
-| `DATABASE_URL` | `sqlite:///./specguard.db` | SQLAlchemy URL. Use `sqlite://` for an in-memory database. |
-| `AI_PROVIDER` | `groq` in the example file | `fake`, `groq`, `ollama`, `hosted_open_weight`. `gemini` is reserved: selecting it returns 503 "not implemented in this build". |
-| `GROQ_API_KEY`, `GROQ_MODEL` | empty | Personal credentials, only where policy permits. Never logged or returned. |
-| `GEMINI_API_KEY`, `GEMINI_MODEL` | empty | Reserved; no provider is implemented. |
-| `OLLAMA_BASE_URL`, `OLLAMA_MODEL` | `http://127.0.0.1:11434`, empty | Local model; the URL must be loopback. |
-| `HOSTED_OPEN_WEIGHT_BASE_URL`, `_API_KEY`, `_MODEL` | empty | OpenAI-compatible endpoint; the URL must be `https`. |
-| `AI_TIMEOUT_SECONDS`, `AI_MAX_RETRIES` | `30`, `1` | Per-call timeout and schema-repair retries. |
-| `MOCK_API_BASE_URL` | `http://localhost:9000` | System under test for runs; loopback only, otherwise runs are refused with 503. |
-| `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated browser origins. |
-| `LOG_LEVEL` | `INFO` | Python logging level. |
-| `MOCK_VERSION` | `1.4.0` | Mock implementation at start-up: `1.3.0`, `1.3.0-b`, `1.3.0-c`, `1.4.0`, `1.5.0`. |
-| `MOCK_MEAL_MIN` | `30` | Shortest meal break (minutes) the mock deducts. |
-| `VITE_API_BASE_URL` | `http://localhost:8000` | Frontend only (`frontend\.env`); never put secrets in `VITE_*`. |
-| `SPECGUARD_ENABLE_HTTP_TESTS` | unset | `1` enables the loopback-socket tests. |
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | SQLAlchemy database URL; use `sqlite://` for in-memory runs. |
+| `AI_PROVIDER` | Use `fake` for deterministic offline evaluation. |
+| `MOCK_API_BASE_URL` | Loopback mock used by execution runs. |
+| `CORS_ORIGINS` | Allowed frontend origins. |
+| `VITE_API_BASE_URL` | Backend URL used by the frontend. |
+| `MOCK_VERSION` | Mock implementation: `1.3.0`, `1.3.0-b`, `1.3.0-c`, `1.4.0`, or `1.5.0`. |
 
-Check a provider without any network call, then (optionally, with your own credentials) make one live call:
+The default demo uses `AI_PROVIDER=fake`, a temporary database, and loopback
+services. No external AI account or network service is required for evaluation.
 
-```powershell
-python -m scripts.check_ai_provider            # configuration only; exit 0 = configured, 2 = not
-python -m scripts.check_ai_provider --live     # one RQ-014 extraction; prints schema validity, retries, latency
-```
+## Scope and limitations
 
-## Demo script (about 10 minutes)
-
-Use the seeded synthetic requirement, configured fake provider, and selected
-mock version. Generated AI edge cases can vary with a different provider.
-
-1. Open the UI as **Asha (Business Analyst)** and select the seeded RQ-014.
-2. In Requirements, analyse the version. In Clarification, choose “deduct only
-   breaks of 30 minutes or more,” then approve the specification.
-3. In Test review, generate tests with AI. Review the engine-generated tests
-   and approve them; inspect blocked AI cases and their validation refusals.
-4. In Execution & defects, run approved tests against mock 1.3.0. Open a
-   failing result, inspect its evidence, and use the defect action to filter
-   failing tests. Switch to 1.4.0 and run twice to observe defect resolution.
-5. In Requirements, create a new RQ-014 version with `POL-OT-01@v2`, analyse
-   and clarify it, then approve the new specification and generate its tests.
-6. In Change impact, analyse the new spec against its previous version, review
-   changed rules and impacted tests, then return to Test review to approve
-   stale/new tests.
-7. Run the recommended tests on mock 1.4.0 to observe drift, switch to 1.5.0,
-   and rerun to verify the updated policy behavior.
-8. Open Audit history to inspect event filters, pagination, entity links,
-   hashes, and trace IDs. Overview summarizes counts and recent run outcomes.
-
-The API docs at `http://127.0.0.1:8000/docs` and
-`python -m scripts.e2e_live` remain available for API-level verification.
-
-If the UI or mock gets into an odd state, run `reset_demo.ps1` and start again.
-
-## Domain rules and limitations
-
-Only 24-hour `HH:MM` local wall-clock times are supported. DST and time zones are excluded. Equal start/end times, shifts longer than 960 minutes, malformed times, negative meals, meals longer than shift span, and earlier clock-out without `overnight=true` are invalid. `overnight=true` requires the end clock time to precede the start clock time. The mock returns 422 for invalid requests. The oracle accepts only a 480-minute per-shift threshold. A meal is deducted once.
-
-Runner limit: 1–100 cases, 2048-byte input per case, 16 KiB response per case, and 3-second HTTP timeout. No retries. The endpoint is fixed to loopback. The fixed URL must resolve to the locally controlled mock; production network isolation and trusted approval persistence are integration responsibilities. Blocking findings stop execution. V11 warnings require acknowledgment in the trusted approval record. The `meal_break_minutes` input represents an already-approved unpaid break; no break-approval workflow exists here.
-
-The sandbox blocks loopback sockets: even `asyncio.new_event_loop()` stalls in Python's Windows `socketpair` fallback. With permitted loopback access, the event loop, Uvicorn, real HTTP requests, the controlled runner, and all 18 tests worked. In the restricted shell, 17 tests pass and the one in-process HTTP test skips. Dependency installation from PyPI failed here because DNS access is unavailable; preinstalled FastAPI, Pydantic and HTTPX allowed `unittest` verification. Pytest and GitHub Actions have not run locally. Run the documented install and pytest commands on a networked developer machine.
-
-No license has been chosen. The team must agree before licensing teammates' work.
-
-**Licence and terms placeholder (to be completed by the team, not asserted here):** if a hosted AI provider such as Groq is used,
-its model licence, service terms, data-use and data-retention terms apply and must be reviewed and accepted by the account
-holder before any non-synthetic data is sent. This repository ships only synthetic data and a deterministic fake provider.
-
-No private GitHub repository was created from the original workspace: local `gh auth status` reported an invalid token. From an authenticated account, after confirming the intended owner and that no repo with this name exists:
-
-```powershell
-gh auth login -h github.com
-gh repo create SpecGuard-2.0 --private --source . --remote origin --push
-```
-
-The local default branch is `main`. Four collaborator usernames are still needed; no invitations have been sent. Use feature branches and reviewed pull requests for integration.
+This prototype uses fictional data and local loopback services. Time zones,
+daylight-saving transitions, production authentication, trusted human
+approval persistence, external Dayforce connectivity, and production payroll
+policy behavior are outside its scope. The UI's actor and role selector is a
+workflow demonstration, not authentication.
